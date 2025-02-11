@@ -14,7 +14,9 @@
 
 ## Overview
 
-The Agent Leaderboard evaluates language models' ability to effectively utilize tools in complex scenarios. With major tech CEOs predicting 2025 as a pivotal year for AI agents, we built this leaderboard to answer: "How do AI agents perform in real-world business scenarios?"
+The Agent Leaderboard evaluates language models' ability to effectively utilize tools in complex scenarios. With major tech CEOs predicting 2025 as a pivotal year for AI agents, we built this leaderboard to answer: **"How do AI agents perform in real-world business scenarios?"**
+
+Get latest update of the [leaderboard](https://huggingface.co/spaces/galileo-ai/agent-leaderboard) on Hugging Face Spaces. For further info, checkout the [blog post](https://galileo.ai/blog/agent-leaderboard) for a detailed overview of our evaluation methodology.
 
 <p align="center">
   <img src="images/overview.png" />
@@ -28,7 +30,7 @@ Our evaluation process follows a systematic approach:
 **Agent Configuration**: Standardized system prompt and consistent tool access  
 **Metric Definition**: [Tool Selection Quality (TSQ)](https://docs.galileo.ai/galileo/gen-ai-studio-products/galileo-guardrail-metrics/tool-selection-quality#tool-selection-quality) as primary metric  
 **Dataset Curation**: Strategic sampling from established benchmarks  
-**Scoring System**: Equally weighted average across datasets  
+**Scoring System**: Equally weighted average across datasets
 
 ## Model Rankings
 
@@ -153,7 +155,7 @@ agent-leaderboard/
 
 We extend our sincere gratitude to the creators of the benchmark datasets that made this evaluation framework possible:
 
-- [**BFCL (Berkeley Function Calling Leaderboard)**](https://gorilla.cs.berkeley.edu/leaderboard.html): Thanks to the Berkeley AI Research team for their comprehensive dataset evaluating function calling capabilities.
+- [**BFCL**](https://gorilla.cs.berkeley.edu/leaderboard.html): Thanks to the Berkeley AI Research team for their comprehensive dataset evaluating function calling capabilities.
 
 - [**τ-bench**](https://github.com/sierra-research/tau-bench): Thanks to the Sierra Research team for developing this benchmark focusing on real-world tool use scenarios.
 
