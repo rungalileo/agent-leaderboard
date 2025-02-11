@@ -16,7 +16,7 @@
 
 The Agent Leaderboard evaluates language models' ability to effectively utilize tools in complex scenarios. With major tech CEOs predicting 2025 as a pivotal year for AI agents, we built this leaderboard to answer: **"How do AI agents perform in real-world business scenarios?"**
 
-Get latest update of the [leaderboard](https://huggingface.co/spaces/galileo-ai/agent-leaderboard) on Hugging Face Spaces. For further info, checkout the [blog post](https://galileo.ai/blog/agent-leaderboard) for a detailed overview of our evaluation methodology.
+Get latest update of the [leaderboard](https://huggingface.co/spaces/galileo-ai/agent-leaderboard) on Hugging Face Spaces. For more info, checkout the [blog post](https://galileo.ai/blog/agent-leaderboard) for a detailed overview of our evaluation methodology.
 
 <p align="center">
   <img src="images/overview.png" />
