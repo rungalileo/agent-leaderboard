@@ -19,6 +19,13 @@ The Agent Leaderboard evaluates language models' ability to effectively utilize 
 Get latest update of the [leaderboard](https://huggingface.co/spaces/galileo-ai/agent-leaderboard) on Hugging Face Spaces. For more info, checkout the [blog post](https://galileo.ai/blog/agent-leaderboard) for a detailed overview of our evaluation methodology.
 
 <p align="center">
+  <img src="images/leaderboard.png" />
+</p>
+
+<p align="center">
+  <a href="https://huggingface.co/spaces/galileo-ai/agent-leaderboard">https://huggingface.co/spaces/galileo-ai/agent-leaderboard</a>
+
+<p align="center">
   <img src="images/overview.png" />
 </p>
 
