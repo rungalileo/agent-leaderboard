@@ -1,0 +1,4 @@
+langgraph==0.2.56 
+langchain-community==0.3.9 
+langchain-openai==0.2.11 
+promptquality==0.72.1
