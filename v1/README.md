@@ -1,7 +1,7 @@
 # Agent Leaderboard
 
 <p align="center">
-  <img src="images/blog_cover.png" />
+  <img src="v1/images/blog_cover.png" />
 </p>
 
 <div align="center">
@@ -19,14 +19,14 @@ The Agent Leaderboard evaluates language models' ability to effectively utilize 
 Get latest update of the [leaderboard](https://huggingface.co/spaces/galileo-ai/agent-leaderboard) on Hugging Face Spaces. For more info, checkout the [blog post](https://galileo.ai/blog/agent-leaderboard) for a detailed overview of our evaluation methodology.
 
 <p align="center">
-  <img src="images/leaderboard.png" />
+  <img src="v1/images/leaderboard.png" />
 </p>
 
 <p align="center">
   <a href="https://huggingface.co/spaces/galileo-ai/agent-leaderboard">https://huggingface.co/spaces/galileo-ai/agent-leaderboard</a>
 
 <p align="center">
-  <img src="images/overview.png" />
+  <img src="v1/images/overview.png" />
 </p>
 
 ### Methodology
@@ -44,7 +44,7 @@ Our evaluation process follows a systematic approach:
 Current standings across different models:
 
 <p align="center">
-  <img src="images/ranking.png" />
+  <img src="v1/images/ranking.png" />
 </p>
 
 ## Development Guidelines
@@ -52,7 +52,7 @@ Current standings across different models:
 Key considerations for implementing AI agents:
 
 <p align="center">
-  <img src="images/implications.png" />
+  <img src="v1/images/implications.png" />
 </p>
 
 ## Key Insights
@@ -60,7 +60,7 @@ Key considerations for implementing AI agents:
 Analysis of model performance and capabilities:
 
 <p align="center">
-  <img src="images/insights.png" />
+  <img src="v1/images/insights.png" />
 </p>
 
 ## Tool Selection Complexity
@@ -68,7 +68,7 @@ Analysis of model performance and capabilities:
 Understanding the nuances of tool selection and usage across different scenarios:
 
 <p align="center">
-  <img src="images/complexity_of_tool_calling.png" />
+  <img src="v1/images/complexity_of_tool_calling.png" />
 </p>
 
 ## Dataset Structure
@@ -81,7 +81,7 @@ Comprehensive evaluation across multiple domains and interaction types by levera
 **ToolACE**: API Interactions across 390 Domains  
 
 <p align="center">
-  <img src="images/datasets.png" />
+  <img src="v1/images/datasets.png" />
 </p>
 
 ## Evaluation
@@ -89,7 +89,7 @@ Comprehensive evaluation across multiple domains and interaction types by levera
 Our evaluation metric [Tool Selection Quality (TSQ)](https://docs.galileo.ai/galileo/gen-ai-studio-products/galileo-guardrail-metrics/tool-selection-quality#tool-selection-quality) assesses how well models select and use tools based on real-world requirements:
 
 <p align="center">
-  <img src="images/evaluating_agents.png" />
+  <img src="v1/images/evaluating_agents.png" />
 </p>
 
 ### Implementation
