@@ -1,60 +1,144 @@
+"""
+Main entry point for Agent Evaluation system
+"""
+
+import os
+import sys
+import json
 import argparse
-import asyncio
+import time
+from typing import List, Dict, Any
 from pathlib import Path
-from simulation import build_graph, load_data, get_evaluation_config
+from simulation import AgentSimulation
 
 
-async def run_simulation(agent_model: str, domain: str):
-    graph = build_graph(agent_model)
-    personas, scenarios, tools = load_data(domain)
+def parse_args():
+    parser = argparse.ArgumentParser(description="Agent Leaderboard v2 Evaluation")
 
-    config, evaluate_handler = get_evaluation_config()
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
 
-    # Run for first scenario as example (extend to all scenarios as needed)
-    initial_state = {
-        "domain": domain,
-        "category": scenarios[0]["category"],
-        "persona": personas[0],
-        "scenario": scenarios[0],
-        "tools": tools,
-        "conversation_history": [],
-        "current_turn": 0,
-        "max_turns": 10,
-        "user_goals": scenarios[0]["goals"],
-        "tool_calls": [],
-        "responses": [],
-    }
-
-    print(f"Running simulation for domain: {domain}, model: {agent_model}")
-    print(f"Scenario: {initial_state['scenario']['first_message']}")
-    async for event in graph.astream(initial_state, config=config):
-        for k, v in event.items():
-            if k != "__end__":
-                print(f"{k}: {v}")
-
-    evaluate_handler.finish()
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Run Agent Leaderboard v2 simulation")
     parser.add_argument(
         "--model",
         type=str,
-        default="claude-3-7-sonnet-20250219",
-        help="Model name for the agent",
+        required=True,
+        help="Model name for the agent being evaluated",
     )
+
     parser.add_argument(
         "--domain",
         type=str,
-        default="banking",
-        choices=["banking"],
-        help="Domain to simulate",
+        required=True,
+        help="Domain for the simulation (e.g., banking, healthcare)",
     )
-    args = parser.parse_args()
 
-    asyncio.run(run_simulation(args.model, args.domain))
+    parser.add_argument(
+        "--category",
+        type=str,
+        required=True,
+        help="Category for the simulation (e.g., tool_coordination, context_retention)",
+    )
+
+    parser.add_argument(
+        "--scenario-idx",
+        type=int,
+        default=None,
+        help="Index of the specific scenario to run (default: run all)",
+    )
+
+    parser.add_argument(
+        "--no-galileo", action="store_true", help="Disable logging to Galileo"
+    )
+
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="./results",
+        help="Directory to save results (default: ./results)",
+    )
+
+    return parser.parse_args()
 
 
-# python src/main.py --model "gpt-4o-2024-11-20" --domain "banking"
+def run_evaluation(args):
+    """Run the evaluation with the provided arguments."""
+    # Create output directory if it doesn't exist
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # Initialize simulation
+        simulation = AgentSimulation(
+            agent_model=args.model,
+            domain=args.domain,
+            category=args.category,
+            log_to_galileo=not args.no_galileo,
+            verbose=args.verbose,
+        )
+
+        results = []
+
+        # Run simulation for specific scenario or all scenarios
+        if args.scenario_idx is not None:
+            # Run single scenario
+            print(
+                f"Running scenario {args.scenario_idx} for {args.domain}/{args.category} with model {args.model}"
+            )
+            try:
+                result = simulation.run_simulation(scenario_idx=args.scenario_idx)
+                results.append(result)
+            except Exception as e:
+                print(f"Error running scenario {args.scenario_idx}: {str(e)}")
+                import traceback
+
+                traceback.print_exc()
+        else:
+            # Run all scenarios
+            print(
+                f"Running all scenarios for {args.domain}/{args.category} with model {args.model}"
+            )
+            total_scenarios = len(simulation.scenarios)
+            for i in range(total_scenarios):
+                print(f"\n--------------------------------")
+                print(f"Running scenario {i+1}/{total_scenarios} (index: {i})")
+                print(f"--------------------------------\n")
+                try:
+                    result = simulation.run_simulation(scenario_idx=i)
+                    results.append(result)
+                    print(
+                        f"\n✅ Scenario {i} completed successfully. Total turns: {result['turns']}"
+                    )
+                except Exception as e:
+                    print(f"\n❌ Error running scenario {i}: {str(e)}")
+                    import traceback
+
+                    traceback.print_exc()
+
+        # Save results
+        if results:  # Only save if we have results
+            timestamp = int(time.time())
+            output_file = (
+                output_dir
+                / f"{args.domain}_{args.category}_{args.model.replace('/', '-')}_{timestamp}.json"
+            )
+
+            with open(output_file, "w") as f:
+                json.dump(results, f, indent=2)
+
+            print(f"Results saved to {output_file}")
+        else:
+            print("No results to save - all scenarios failed.")
+    except Exception as e:
+        print(f"Error occurred during evaluation: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+
+
+def main():
+    """Main entry point."""
+    args = parse_args()
+    run_evaluation(args)
+
+
 if __name__ == "__main__":
     main()

@@ -3,12 +3,15 @@ import os
 from typing import Optional
 from langchain_core.language_models import BaseChatModel
 from langchain_anthropic import ChatAnthropic
+from langchain_cohere import ChatCohere
 from langchain_mistralai import ChatMistralAI
+from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_together import ChatTogether
 from langchain_openai import ChatOpenAI
 from langchain_fireworks import ChatFireworks
-
+from langchain_aws import ChatBedrock
+from langchain_writer import ChatWriter
 
 class LLMHandler:
     """
@@ -28,6 +31,7 @@ class LLMHandler:
                 "mistral-small-2409",
                 "mistral-large-2411",
                 "mistral-small-2501",
+                "mistral-small-2503",
             ],
             "google": [
                 "gemini-2.0-flash-exp",
@@ -35,6 +39,7 @@ class LLMHandler:
                 "gemini-1.5-pro",
                 "gemini-2.0-flash-001",
                 "gemini-2.0-flash-lite-001",
+                # "gemma-3-27b-it",
             ],
             "together": [
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo",
@@ -55,6 +60,21 @@ class LLMHandler:
                 "accounts/fireworks/models/deepseek-v3",
                 "accounts/fireworks/models/deepseek-r1",
             ],
+            "bedrock": [
+                "amazon.nova-pro-v1:0",
+                "amazon.nova-micro-v1:0",
+                "amazon.nova-lite-v1:0",
+            ],
+            "cohere": [
+                "command-a-03-2025",
+            ],
+            "nvidia": [
+                "nvidia/llama-3.3-nemotron-super-49b-v1",
+                "nvidia/llama-3.1-nemotron-nano-8b-v1",
+            ],
+            "writer": [
+                "palmyra-x-004",
+            ],
         }
         self.model_types = {
             "claude-3-5-sonnet-20241022": "private",
@@ -64,6 +84,8 @@ class LLMHandler:
             "ministral-8b-2410": "private",
             "mistral-small-2409": "private",
             "mistral-large-2411": "private",
+            "mistral-small-2501": "open-source",
+            "mistral-small-2503": "open-source",
             "gemini-2.0-flash-exp": "private",
             "gemini-1.5-flash": "private",
             "gemini-1.5-pro": "private",
@@ -80,6 +102,17 @@ class LLMHandler:
             "accounts/fireworks/models/qwen2p5-72b-instruct": "open-source",
             "accounts/fireworks/models/deepseek-v3": "open-source",
             "accounts/fireworks/models/deepseek-r1": "open-source",
+            "amazon.nova-pro-v1:0": "private",
+            "amazon.nova-micro-v1:0": "private",
+            "amazon.nova-lite-v1:0": "private",
+            "command-a-03-2025": "private",
+            "nvidia/llama-3.3-nemotron-super-49b-v1": "private",
+            "nvidia/llama-3.1-nemotron-nano-8b-v1": "private",
+            "gemma-3-1b-it": "open-source",
+            "gemma-3-4b-it": "open-source",
+            "gemma-3-12b-it": "open-source",
+            "gemma-3-27b-it": "open-source",
+            "palmyra-x-004": "private",
         }
 
         # Model name patterns for auto-detection of client
@@ -93,10 +126,15 @@ class LLMHandler:
             "ministral": "mistral",
             "gemini": "google",
             "mixtral": "together",
-            "llama": "together",
+            "meta-llama": "together",
             "fireworks": "fireworks",
             "r1": "together",
             "deepseek-v3": "together",
+            "nova": "bedrock",
+            "command": "cohere",
+            "nvidia": "nvidia",
+            "gemma": "google",
+            "palmyra": "writer",
         }
 
     def _detect_provider(self, model_name: str) -> str:
@@ -173,7 +211,7 @@ class LLMHandler:
             model_params.pop("temperature", None)
 
         # set temperature to 0.6 if model name contains r1
-        if "r1" in model_name:
+        if ("r1" in model_name) or ("nvidia/llama-3.3-nemotron" in model_name):
             model_params["temperature"] = 0.6
 
         # Remove None values
@@ -202,3 +240,19 @@ class LLMHandler:
         elif provider == "fireworks":
             print("Using Fireworks")
             return ChatFireworks(model=model_name, **model_params)
+
+        elif provider == "bedrock":
+            print("Using Bedrock")
+            return ChatBedrock(model_id=model_name, **model_params)
+
+        elif provider == "cohere":
+            print("Using Cohere")
+            return ChatCohere(model=model_name, **model_params)
+
+        elif provider == "nvidia":
+            print("Using NVIDIA")
+            return ChatNVIDIA(model=model_name, **model_params)
+
+        elif provider == "writer":
+            print("Using Writer")
+            return ChatWriter(model=model_name, **model_params)
