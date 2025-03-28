@@ -12,6 +12,7 @@ from langchain_openai import ChatOpenAI
 from langchain_fireworks import ChatFireworks
 from langchain_aws import ChatBedrock
 from langchain_writer import ChatWriter
+from langchain_deepseek import ChatDeepSeek
 
 class LLMHandler:
     """
@@ -39,13 +40,13 @@ class LLMHandler:
                 "gemini-1.5-pro",
                 "gemini-2.0-flash-001",
                 "gemini-2.0-flash-lite-001",
+                "gemini-2.5-pro-exp-03-25",
                 # "gemma-3-27b-it",
             ],
             "together": [
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                 "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
                 "deepseek-ai/DeepSeek-R1",
-                "deepseek-ai/DeepSeek-V3",
             ],
             "openai": [
                 "gpt-4o-2024-11-20",
@@ -57,7 +58,6 @@ class LLMHandler:
             "fireworks": [
                 "accounts/fireworks/models/qwen-qwq-32b-preview",
                 "accounts/fireworks/models/qwen2p5-72b-instruct",
-                "accounts/fireworks/models/deepseek-v3",
                 "accounts/fireworks/models/deepseek-r1",
             ],
             "bedrock": [
@@ -75,6 +75,9 @@ class LLMHandler:
             "writer": [
                 "palmyra-x-004",
             ],
+            "deepseek": [
+                "deepseek-chat",
+            ],
         }
         self.model_types = {
             "claude-3-5-sonnet-20241022": "private",
@@ -91,6 +94,7 @@ class LLMHandler:
             "gemini-1.5-pro": "private",
             "gemini-2.0-flash-001": "private",
             "gemini-2.0-flash-lite-001": "private",
+            "gemini-2.5-pro-exp-03-25": "private",
             "meta-llama/Llama-3.3-70B-Instruct-Turbo": "open-source",
             "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo": "open-source",
             "gpt-4o-2024-11-20": "private",
@@ -100,7 +104,6 @@ class LLMHandler:
             "gpt-4.5-preview-2025-02-27": "private",
             "accounts/fireworks/models/qwen-qwq-32b-preview": "open-source",
             "accounts/fireworks/models/qwen2p5-72b-instruct": "open-source",
-            "accounts/fireworks/models/deepseek-v3": "open-source",
             "accounts/fireworks/models/deepseek-r1": "open-source",
             "amazon.nova-pro-v1:0": "private",
             "amazon.nova-micro-v1:0": "private",
@@ -113,6 +116,7 @@ class LLMHandler:
             "gemma-3-12b-it": "open-source",
             "gemma-3-27b-it": "open-source",
             "palmyra-x-004": "private",
+            "deepseek-chat": "open-source",
         }
 
         # Model name patterns for auto-detection of client
@@ -129,7 +133,7 @@ class LLMHandler:
             "meta-llama": "together",
             "fireworks": "fireworks",
             "r1": "together",
-            "deepseek-v3": "together",
+            "deepseek": "deepseek",
             "nova": "bedrock",
             "command": "cohere",
             "nvidia": "nvidia",
@@ -214,6 +218,9 @@ class LLMHandler:
         if ("r1" in model_name) or ("nvidia/llama-3.3-nemotron" in model_name):
             model_params["temperature"] = 0.6
 
+        if "deepseek" in model_name:
+            model_params["temperature"] = 0.0
+
         # Remove None values
         model_params = {k: v for k, v in model_params.items() if v is not None}
 
@@ -256,3 +263,7 @@ class LLMHandler:
         elif provider == "writer":
             print("Using Writer")
             return ChatWriter(model=model_name, **model_params)
+
+        elif provider == "deepseek":
+            print("Using DeepSeek")
+            return ChatDeepSeek(model=model_name, **model_params)

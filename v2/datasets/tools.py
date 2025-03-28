@@ -18,10 +18,12 @@ HUMAN_PROMPT = """## Task Description
 Generate exactly {num_tools} function definitions for a conversational AI chatbot in the {industry} industry. These tools must follow the JSONSchema format and enable the chatbot to perform domain-specific tasks and respond to user queries effectively.
 
 ## Output Format Requirements
-Your response must be a valid JSON array containing exactly {num_tools} objects. Each object must follow this exact structure:
+Your response must be a valid JSON array containing exactly {num_tools} objects, with NO explanatory text before or after the JSON. Your entire response must be parseable with json.loads().
+
+Each object must follow this exact structure:
 ```json
 {{
-  "description": "Specific function purpose.",
+  "description": "Specific function purpose and information present in its response.",
   "properties": {{
     "parameter_name": {{
       "description": "Detailed description of the parameter ending with a period.",
@@ -54,18 +56,53 @@ Your response must be a valid JSON array containing exactly {num_tools} objects.
 }}
 ```
 
-IMPORTANT JSON FORMATTING RULES:
+## CRITICAL JSON FORMATTING RULES:
 1. ALL property names must be in double quotes
 2. ALL string values must be in double quotes
 3. NO trailing commas after the last item in objects or arrays
 4. NO comments in the JSON
-5. Arrays and objects must be properly closed
+5. Arrays and objects must be properly closed with matching brackets and braces
 6. The output must be a single JSON array containing {num_tools} function objects
 7. Parameter titles must be in snake_case with underscores
 8. Function titles (tool names) must be in snake_case
 9. Parameter descriptions must end with a period
 10. Array parameters must include the "items" field with the element type
 11. Each tool must include a response_schema defining the expected response format
+12. Commas must correctly separate items in arrays and properties in objects
+13. Do not use trailing commas (e.g., {{"a": 1,}} is invalid)
+14. Ensure all opening brackets/braces have matching closing brackets/braces
+
+## JSON Array Structure Example:
+```json
+[
+  {{
+    "description": "First tool description",
+    "properties": {{ ... }},
+    "required": [ ... ],
+    "title": "first_tool_name",
+    "type": "object",
+    "response_schema": {{ ... }}
+  }},
+  {{
+    "description": "Second tool description",
+    "properties": {{ ... }},
+    "required": [ ... ],
+    "title": "second_tool_name",
+    "type": "object",
+    "response_schema": {{ ... }}
+  }}
+]
+```
+
+## Self-Validation Steps
+Before submitting your response, verify that:
+1. The JSON is properly formatted with correct commas between objects and properties
+2. All brackets and braces are properly matched and closed
+3. The output starts with '[' and ends with ']' with no extra text
+4. There are exactly {num_tools} tools in the array
+5. All required fields are present in each tool
+6. No trailing commas exist in the JSON structure
+7. The entire response is valid JSON that could be parsed with JSON.parse()
 
 ## Function Design Guidelines:
 1. Parameter Design:
