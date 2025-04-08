@@ -1,16 +1,17 @@
 import time
 import json
 import re
-import os
-from typing import Dict, List, Any, Optional, Tuple
-from galileo import GalileoLogger
+
+from typing import Dict, List, Any, Optional
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
-from langchain_core.language_models import BaseChatModel
 import config
 from llm_handler import LLMHandler
 from galileo import galileo_context
 from galileo.datasets import get_dataset
 from galileo.experiments import run_experiment
+from dotenv import load_dotenv
+
+load_dotenv("../.env")
 
 
 def ensure_string(value: Any) -> str:
@@ -91,78 +92,6 @@ class AgentSimulation:
         else:
             self.galileo_logger = None
 
-    def create_tool_selection_prompt(
-        self,
-        user_message: str,
-        conversation_history: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-    ) -> str:
-        """
-        Create a prompt that forces the agent to select appropriate tools.
-
-        Args:
-            user_message: The user message to respond to
-            conversation_history: The conversation history
-            tools: Available tools
-
-        Returns:
-            A prompt that will force tool selection
-        """
-        # Format the available tools
-        tool_descriptions = []
-        for tool in tools:
-            description = tool.get("description", "")
-            name = tool.get("title", "")
-            parameters = tool.get("properties", {})
-            required = tool.get("required", [])
-
-            param_descriptions = []
-            for param_name, param_info in parameters.items():
-                required_str = "(REQUIRED)" if param_name in required else "(OPTIONAL)"
-                param_desc = f"- {param_name}: {param_info.get('description', '')} {required_str}"
-                param_descriptions.append(param_desc)
-
-            tool_description = f"""
-Tool name: {name}
-Description: {description}
-Parameters:
-{chr(10).join(param_descriptions)}
-"""
-            tool_descriptions.append(tool_description)
-
-        # Format conversation history, excluding the current user message
-        history_text = ""
-        # Use all messages except the last one if it's a user message and matches the current user_message
-        messages_to_include = conversation_history
-        if (
-            conversation_history
-            and conversation_history[-1]["role"] == "user"
-            and conversation_history[-1]["content"] == user_message
-        ):
-            messages_to_include = conversation_history[:-1]
-
-        for msg in messages_to_include:
-            role = msg["role"].upper()
-            content = msg["content"]
-            history_text += f"{role}: {content}\n\n"
-
-        # Add a notice about valid JSON formatting to the prompt
-        json_formatting_notice = """
-IMPORTANT: Your response must be strictly valid JSON without any comments or explanations. 
-Do not include '//' comments or any explanatory text in the JSON.
-Instead of adding comments within the JSON, use placeholder values and mention requirements in parameter descriptions.
-"""
-
-        # Return formatted prompt from config with the JSON formatting notice
-        return (
-            config.TOOL_SELECTION_PROMPT.format(
-                tool_descriptions=chr(10).join(tool_descriptions),
-                history_text=history_text,
-                user_message=user_message,
-            )
-            + json_formatting_notice
-        )
-
     def update_agent_prompt(self, tools: List[Dict[str, Any]]) -> str:
         """
         Create a system prompt for the agent that instructs it to use tools.
@@ -239,49 +168,64 @@ Parameters:
             For unsupported requests, also sets self._last_unsupported_message.
         """
         # Check if response indicates unsupported request
-        if json_str.strip().startswith("UNSUPPORTED: "):
+        if "UNSUPPORTED: " in json_str:
+            start_idx = json_str.find("UNSUPPORTED: ") + len("UNSUPPORTED: ")
+            end_idx = (
+                json_str.find("\n", start_idx)
+                if "\n" in json_str[start_idx:]
+                else len(json_str)
+            )
+            self._last_unsupported_message = json_str[start_idx:end_idx].strip()
             if self.verbose:
-                print("Request cannot be handled by available tools")
-            self._last_unsupported_message = json_str.strip()[12:]  # Store explanation
+                print(
+                    f"Request cannot be handled by available tools: {self._last_unsupported_message}"
+                )
             return []
 
         # Check if response is a clarifying question
-        if json_str.strip().startswith("CLARIFY: "):
+        if "CLARIFY: " in json_str:
             if self.verbose:
                 print("Agent needs clarification - no tool calls extracted")
             return []
 
         tool_calls = []
 
-        try:
-            # Remove JavaScript-style comments
-            json_str_clean = re.sub(r"//.*?(\n|$)", "\n", json_str)
-            # Also remove multi-line comments if present
-            json_str_clean = re.sub(r"/\*.*?\*/", "", json_str_clean, flags=re.DOTALL)
+        # Try to find JSON array in the response
+        json_match = re.search(r"\[\s*\{.*?\}\s*\]", json_str, re.DOTALL)
+        if json_match:
+            try:
+                # Remove JavaScript-style comments
+                json_str_clean = re.sub(r"//.*?(\n|$)", "\n", json_match.group(0))
+                # Also remove multi-line comments if present
+                json_str_clean = re.sub(
+                    r"/\*.*?\*/", "", json_str_clean, flags=re.DOTALL
+                )
 
-            # Parse the JSON array
-            data = json.loads(json_str_clean)
+                # Parse the JSON array
+                data = json.loads(json_str_clean)
 
-            # Process each tool call
-            if isinstance(data, list):
-                for item in data:
-                    if (
-                        isinstance(item, dict)
-                        and "tool" in item
-                        and "parameters" in item
-                    ):
-                        tool_calls.append(
-                            {"name": item["tool"], "parameters": item["parameters"]}
-                        )
-        except json.JSONDecodeError as e:
-            if self.verbose:
-                print(f"Failed to parse JSON: {e}")
-                print(f"JSON string: {json_str}")
+                # Process each tool call
+                if isinstance(data, list):
+                    for item in data:
+                        if (
+                            isinstance(item, dict)
+                            and "tool" in item
+                            and "parameters" in item
+                        ):
+                            tool_calls.append(
+                                {"name": item["tool"], "parameters": item["parameters"]}
+                            )
+            except json.JSONDecodeError as e:
+                if self.verbose:
+                    print(f"Failed to parse JSON: {e}")
+                    print(f"JSON string: {json_str}")
 
         return tool_calls
 
     def select_tools(
-        self, user_message: str, conversation_history: List[Dict[str, str]]
+        self,
+        user_message: str,
+        conversation_history: List[Dict[str, str]],
     ) -> List[Dict[str, Any]]:
         """
         Force the agent to select appropriate tools for the given user message.
@@ -293,29 +237,42 @@ Parameters:
         Returns:
             List of selected tools. Empty list if clarification needed.
         """
-        # Create tool selection prompt
-        prompt = self.create_tool_selection_prompt(
-            user_message=user_message,
-            conversation_history=conversation_history,
-            tools=self.tools,
-        )
+        # Create system prompt with instructions about tools
+        system_prompt = self.update_agent_prompt(self.tools)
+
+        # Format conversation history for the agent
+        messages = [SystemMessage(content=system_prompt)]
+
+        # Add conversation history
+        for msg in conversation_history:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                messages.append(AIMessage(content=msg["content"]))
+
+        # Add the current user message
+        messages.append(HumanMessage(content=user_message))
+
+        # Prepare full prompt for logging
+        full_prompt = "\n".join([msg.content for msg in messages])
 
         if self.verbose:
-            print("Creating tool selection prompt...")
-            print(f"Prompt length: {len(prompt)}")
+            print("Selecting tools with system prompt...")
+            print(f"Message count: {len(messages)}")
 
         # Call the agent to select tools
-        response = self.agent_llm.invoke([HumanMessage(content=prompt)])
+        start_time = time.time()
+        response = self.agent_llm.invoke(messages)
+        duration = time.time() - start_time
 
         # Log the full prompt to Galileo if logger exists
         if self.galileo_logger:
             self.galileo_logger.add_llm_span(
-                input=prompt,
+                input=full_prompt,
                 output=response.content,
                 model=self.agent_model,
-                duration_ns=int(
-                    (time.time() - time.time()) * 1_000_000_000
-                ),  # Just a placeholder, will be replaced
+                tools=self.tools,
+                duration_ns=int(duration * 1_000_000_000),
                 name="agent_tool_selection",
                 tags=["agent", "tool_selection", self.domain, self.category],
             )
@@ -559,6 +516,7 @@ Your response:"""
                 input=full_prompt,
                 output=response.content,
                 model=self.agent_model,
+                tools=self.tools,
                 duration_ns=int((end_time - start_time) * 1_000_000_000),
                 name="agent_final_response",
                 tags=["agent", "final_response", self.domain, self.category],
@@ -630,62 +588,19 @@ Your response:"""
         if self.verbose:
             print(f"Running agent with {len(tools)} tools")
 
+        start_time = time.time()
+
         # Force tool selection first
         tool_calls = self.select_tools(
             user_message=user_message, conversation_history=conversation_history
         )
 
         # If no tools were selected, check if it was due to unsupported request
-        if not tool_calls:
-            if hasattr(self, "_last_unsupported_message"):
-                return f"I apologize, but {self._last_unsupported_message}"
+        if not tool_calls and hasattr(self, "_last_unsupported_message"):
+            return f"I apologize, but {self._last_unsupported_message}"
 
-        start_time = time.time()
-
-        # If no tools were selected, generate a regular response
-        if not tool_calls:
-            if self.verbose:
-                print("No tools selected, generating regular response")
-
-            # Create system message with instructions to use tools
-            system_prompt = self.update_agent_prompt(tools)
-
-            # Format conversation history for the agent
-            messages = [SystemMessage(content=system_prompt)]
-
-            # Add conversation history
-            for msg in conversation_history:
-                if msg["role"] == "user":
-                    messages.append(HumanMessage(content=msg["content"]))
-                else:
-                    messages.append(AIMessage(content=msg["content"]))
-
-            # Add the current user message
-            messages.append(HumanMessage(content=user_message))
-
-            # Prepare full prompt for logging
-            full_prompt = "\n".join([msg.content for msg in messages])
-
-            # Call the agent LLM using the LLMHandler
-            response = self.agent_llm.invoke(messages)
-
-            # Extract the response content
-            agent_response = response.content
-
-            # Log the full prompt to Galileo
-            if self.galileo_logger:
-                if self.verbose:
-                    print("Logging LLM call to Galileo with full prompt")
-
-                self.galileo_logger.add_llm_span(
-                    input=full_prompt,
-                    output=agent_response,
-                    model=self.agent_model,
-                    duration_ns=int((time.time() - start_time) * 1_000_000_000),
-                    name="agent_direct_response",
-                    tags=["agent", "direct_response", self.domain, self.category],
-                )
-        else:
+        # If there are tool calls, process them
+        if tool_calls:
             if self.verbose:
                 print(f"Processing {len(tool_calls)} tool calls")
 
@@ -699,11 +614,21 @@ Your response:"""
                 user_message=user_message,
                 tool_results=tool_results,
             )
+        else:
+            # The tool selection already gave us a direct response (or clarification request)
+            # Get the response from the last message in the conversation history
+            for msg in reversed(conversation_history):
+                if msg["role"] == "assistant":
+                    agent_response = msg["content"]
+                    break
+            else:
+                # If we couldn't find an assistant response, use a default one
+                agent_response = (
+                    "I'm sorry, I don't have a specific tool to help with this request."
+                )
 
         end_time = time.time()
         agent_duration_ns = int((end_time - start_time) * 1_000_000_000)
-
-        # No need for additional logging here since we've logged in the specific branches above
 
         return agent_response
 
@@ -930,7 +855,7 @@ def run_simulation_experiments(
     if metrics is None:
         metrics = ["tool_selection_quality"]
 
-    results = {}
+    results = []
 
     for model in models:
         for domain in domains:
@@ -978,11 +903,8 @@ def run_simulation_experiments(
                     function=runner,
                     metrics=metrics,
                 )
-
-                results[experiment_name] = result
+                results.append(result)
 
                 if verbose:
                     print(f"Completed experiment: {experiment_name}")
-
-    print(f"Completed experiment: {experiment_name}")
     return results

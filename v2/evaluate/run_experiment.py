@@ -1,8 +1,11 @@
-#!/usr/bin/env python
 import argparse
 import json
+import os
 from typing import List
 from simulation import run_simulation_experiments
+from dotenv import load_dotenv
+
+load_dotenv("../.env")
 
 
 def parse_list_arg(arg_value: str) -> List[str]:
@@ -94,16 +97,24 @@ def main():
         verbose=args.verbose,
     )
 
-    # Output results
-    if args.output_file:
-        with open(args.output_file, "w") as f:
-            json.dump(results, f, indent=2)
-        print(f"Results saved to {args.output_file}")
-    else:
-        print("\nExperiment Results:")
-        for experiment_name, result in results.items():
-            print(f"\n{experiment_name}:")
-            print(json.dumps(result, indent=2))
+    # Format results to include only required fields
+    formatted_results = {}
+
+    for result in results:
+        exp_data = result["experiment"]
+        formatted_results[exp_data.name] = {
+            "project_id": exp_data.project_id,
+            "id": exp_data.id,
+            "name": exp_data.name,
+            "created_at": str(exp_data.created_at),
+            "link": result["link"],
+            "message": result["message"],
+        }
+
+    os.makedirs("../data/results", exist_ok=True)
+    for exp_name, result in formatted_results.items():
+        with open(f"../data/results/{exp_name}.json", "w") as f:
+            json.dump(result, f, indent=2)
 
 
 if __name__ == "__main__":

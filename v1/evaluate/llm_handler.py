@@ -41,12 +41,15 @@ class LLMHandler:
                 "gemini-2.0-flash-001",
                 "gemini-2.0-flash-lite-001",
                 "gemini-2.5-pro-exp-03-25",
+                "gemini-2.5-pro-preview-03-25",
                 # "gemma-3-27b-it",
             ],
             "together": [
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                 "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
                 "deepseek-ai/DeepSeek-R1",
+                "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+                "meta-llama/Llama-4-Scout-17B-16E-Instruct",
             ],
             "openai": [
                 "gpt-4o-2024-11-20",
@@ -59,6 +62,8 @@ class LLMHandler:
                 "accounts/fireworks/models/qwen-qwq-32b-preview",
                 "accounts/fireworks/models/qwen2p5-72b-instruct",
                 "accounts/fireworks/models/deepseek-r1",
+                "accounts/fireworks/models/llama4-maverick-instruct-basic",
+                "accounts/fireworks/models/llama4-scout-instruct-basic",
             ],
             "bedrock": [
                 "amazon.nova-pro-v1:0",
@@ -95,6 +100,7 @@ class LLMHandler:
             "gemini-2.0-flash-001": "private",
             "gemini-2.0-flash-lite-001": "private",
             "gemini-2.5-pro-exp-03-25": "private",
+            "gemini-2.5-pro-preview-03-25": "private",
             "meta-llama/Llama-3.3-70B-Instruct-Turbo": "open-source",
             "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo": "open-source",
             "gpt-4o-2024-11-20": "private",
@@ -117,6 +123,10 @@ class LLMHandler:
             "gemma-3-27b-it": "open-source",
             "palmyra-x-004": "private",
             "deepseek-chat": "open-source",
+            "llama4-maverick-instruct-basic": "open-source",
+            "llama4-scout-instruct-basic": "open-source",
+            "llama4-maverick-instruct-basic": "open-source",
+            "llama4-scout-instruct-basic": "open-source",
         }
 
         # Model name patterns for auto-detection of client
