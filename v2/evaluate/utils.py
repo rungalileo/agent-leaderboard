@@ -4,7 +4,9 @@ import re
 import logging
 import os
 from colorama import init, Fore, Style, Back
-from typing import Any
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from typing import List, Dict, Any
+
 
 # Initialize colorama
 init(autoreset=True)
@@ -45,6 +47,81 @@ else:
         "ltee": "+",
         "rtee": "+",
     }
+
+
+class ConversationHistoryManager:
+    """Manages conversation history and related operations for agent simulations."""
+
+    @staticmethod
+    def format_for_display(history: List[Dict[str, str]]) -> str:
+        """Format conversation history for display or logging."""
+        formatted = ""
+        for msg in history:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            formatted += f"{role.upper()}: {content}\n\n"
+        return formatted
+
+    @staticmethod
+    def add_message(
+        history: List[Dict[str, str]], role: str, content: str
+    ) -> List[Dict[str, str]]:
+        """Add a message to the conversation history."""
+        history.append({"role": role, "content": content})
+        return history
+
+    @staticmethod
+    def get_last_user_message(
+        history: List[Dict[str, str]], default_message: str = ""
+    ) -> str:
+        """Get the most recent user message from the history."""
+        for msg in reversed(history):
+            if msg["role"] == "user":
+                return msg["content"]
+        return default_message
+
+    @staticmethod
+    def to_langchain_messages(
+        history: List[Dict[str, str]], system_prompt: str = None
+    ) -> List[Any]:
+        """Convert conversation history to LangChain message format."""
+        messages = []
+
+        # Add system prompt if provided
+        if system_prompt:
+            messages.append(SystemMessage(content=system_prompt))
+
+        # Add conversation history
+        for msg in history:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            elif msg["role"] == "assistant":
+                messages.append(AIMessage(content=msg["content"]))
+
+        return messages
+
+    @staticmethod
+    def filter_for_final_response(history: List[Dict[str, str]]) -> List[Any]:
+        """Filter history for generating a final response, excluding the last assistant message if applicable."""
+        if len(history) >= 2 and history[-2]["role"] == "assistant":
+            filtered_history = [
+                (
+                    HumanMessage(content=msg["content"])
+                    if msg["role"] == "user"
+                    else AIMessage(content=msg["content"])
+                )
+                for msg in history[:-2]
+            ]
+        else:
+            filtered_history = [
+                (
+                    HumanMessage(content=msg["content"])
+                    if msg["role"] == "user"
+                    else AIMessage(content=msg["content"])
+                )
+                for msg in history
+            ]
+        return filtered_history
 
 
 # Set up logging
@@ -147,10 +224,10 @@ def log_section(title, content=None, style=Fore.GREEN, width=100, title_style=No
 
 
 # Function to format JSON for display
-def format_json_for_display(json_obj, max_length=100):
+def format_json_for_display(json_obj, max_length=None):
     """Format JSON for display with truncation if needed"""
     json_str = json.dumps(json_obj)
-    if len(json_str) > max_length:
+    if max_length is not None and len(json_str) > max_length:
         return json_str[:max_length] + "..."
     return json_str
 

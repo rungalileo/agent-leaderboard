@@ -65,6 +65,13 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
 
     parser.add_argument(
+        "--log-to-galileo",
+        action="store_true",
+        default=False,
+        help="Enable logging to Galileo",
+    )
+
+    parser.add_argument(
         "--output-file", type=str, help="File to save experiment results (JSON format)"
     )
 
@@ -83,6 +90,7 @@ def main():
         print(f"  Categories: {categories}")
         print(f"  Metrics: {metrics}")
         print(f"  Project: {args.project}")
+        print(f"  Log to Galileo: {args.log_to_galileo}")
         if args.dataset_name:
             print(f"  Dataset: {args.dataset_name}")
 
@@ -95,6 +103,7 @@ def main():
         project=args.project,
         metrics=metrics,
         verbose=args.verbose,
+        log_to_galileo=args.log_to_galileo,
     )
 
     # Format results to include only required fields
@@ -125,3 +134,4 @@ if __name__ == "__main__":
 #   --categories "tool_coordination" \
 #   --project "test-project" \
 #   --verbose
+#   --log-to-galileo

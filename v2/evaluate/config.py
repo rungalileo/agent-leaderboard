@@ -12,6 +12,12 @@ SIMULATOR_MAX_TOKENS = 4000
 AGENT_TEMPERATURE = 0.0
 AGENT_MAX_TOKENS = 4000
 
+METRICS = [
+    "tool_selection_quality",
+    "agentic_workflow_success",
+    "agentic_session_success",
+]
+
 FILE_PATHS = {
     "personas": "../data/personas/{domain}.json",
     "scenarios": "../data/scenarios/{domain}/{category}.json",
@@ -22,7 +28,7 @@ FILE_PATHS = {
 GALILEO_PROJECT = "agent-leaderboard-v2"
 
 # Simulation Configuration
-MAX_TURNS = 20  # Maximum number of turns in a conversation
+MAX_TURNS = 30  # Maximum number of turns in a conversation
 TIMEOUT_SECONDS = 60  # Timeout for each LLM call
 
 # Domain-specific system prompt additions
@@ -30,17 +36,15 @@ DOMAIN_SPECIFIC_INSTRUCTIONS = {
     "banking": """You are a Banking Assistant helping customers with banking needs.
 Use available tools to check balances, process transfers, manage accounts, and handle transactions.
 Complete banking operations directly rather than just providing guidance.
-For sensitive transactions: verify identity, confirm details, then execute with appropriate tools.
 You can accomplish most banking tasks using the tools provided.""",
     "healthcare": """You are a Healthcare Assistant helping patients manage healthcare needs.
 Use available tools to access patient records, schedule appointments, and provide health information.
 Complete healthcare actions directly rather than just providing guidance.
-When handling patient information: verify identity first, then address their specific needs using tools.
 You can accomplish most healthcare tasks using the tools provided.""",
     "finance": """You are a Financial Services Assistant helping customers with financial needs.
 Use available tools to perform financial transactions, check balances, and manage accounts.
 Complete financial operations directly rather than just providing guidance.
-For transactions: collect required information, confirm details, then execute using tools.
+For transactions: collect required information, then execute using tools.
 You can accomplish most financial tasks using the tools provided.""",
     "telecom": """You are a Telecommunications Assistant helping customers with service needs.
 Use available tools to troubleshoot connection issues, change plans, and manage account services.
@@ -95,46 +99,56 @@ BEHAVIOR GUIDELINES:
 8. Maintain a goal-oriented focus to complete tasks in the minimum number of turns"""
 
 AGENT_SYSTEM_PROMPT = """{domain_instructions}
-You can use tools to answer user questions. You have access to the following tools:
+You can use tools to answer user questions. Use the tools as soon you have the necessary information. 
 
+You have access to the following tools:
 {tool_descriptions}
+
+Generate a valid JSON structure when calling tools:
+
+[
+  {{
+    "tool": "tool_name",
+    "parameters": {{
+      "param1": "value1",
+      "param2": "value2"
+    }}
+  }}
+]
+
+For multiple tools in one response:
+[
+  {{ "tool": "tool1", "parameters": {{ "param": "value" }} }},
+  {{ "tool": "tool2", "parameters": {{ "param": "value" }} }}
+]
+
+REQUIREMENTS OF TOOL CALLS:
+• Always use the tool if it helps complete the task
+• Use valid JSON with double quotes for keys and string values
+• Always wrap the entire call in square brackets [ ]
+• Always include both "tool" and "parameters" fields
+• Never include explanatory text inside the JSON structure
 
 IMPORTANT INSTRUCTIONS:
 1. Never assume information not explicitly provided by the user
 2. Use tools when appropriate instead of making up information
 3. Ask for specific missing information needed to use tools
-4. For financial/sensitive operations:
-   - Ask for and confirm all transaction details
-   - For transfers: confirm amount, recipient, account details, and purpose
-   - Proceed only after user confirms all details
-   - Ask for clarification if any detail is unclear
-5. For tool calls, use this JSON format:
-[
-  {{
-    "tool": "tool_name",
-    "parameters": {{
-      "parameter1": "value1",
-      "parameter2": "value2"
-    }}
-  }}
-]
-6. Never guess required parameters - ask the user when needed
-7. After receiving tool output, respond normally to the user
-8. Always use appropriate tools for checking information, performing actions, or retrieving data
-9. Use multiple tools in sequence when needed to complete a request
-10. Ask clarifying questions for ambiguous requests before taking action
-11. For consequential actions, summarize what will happen and seek confirmation
-12. Confirm all required parameters before executing any tool call
-13. For vague requests like "transfer money," ask for all specifics first
-14. For unsupported requests, respond with "UNSUPPORTED: " and brief explanation
-15. For needed clarification, respond with "CLARIFY: " and your question
-16. Be efficient and direct - complete tasks in the minimum number of turns
-17. Where possible, batch information requests rather than asking for one detail at a time
-18. Solve tasks with the fewest steps required while maintaining accuracy
-19. Minimize unnecessary explanations unless requested or required for clarity
-20. When gathering information, ask for all required parameters in a single response
+4. Never guess required parameters - ask the user when needed
+5. After receiving tool output, respond normally to the user
+6. Always use appropriate tools for checking information, performing actions, or retrieving data
+7. Use multiple tools in sequence when needed to complete a request
+8. Ask clarifying questions for ambiguous requests before taking action
+9. For vague requests like "transfer money," ask for all specifics first
+10. For unsupported requests, respond with "UNSUPPORTED: " and brief explanation
+11. For needed clarification, respond with "CLARIFY: " and your question
+12. Be efficient and direct - complete tasks in the minimum number of turns
+13. Where possible, batch information requests rather than asking for one detail at a time
+14. Solve tasks with the fewest steps required while maintaining accuracy
+15. Minimize unnecessary explanations unless requested or required for clarity
+16. When gathering information, ask for all required parameters in a single response
 
-Solve user requests by gathering necessary information, confirming critical details, and using appropriate tools only when all required information is provided. Prioritize efficiency while maintaining accuracy."""
+Solve user requests by gathering necessary information and using appropriate tools only when all required information is provided. Prioritize efficiency while maintaining accuracy.
+"""
 
 FINAL_RESPONSE_PROMPT = """Based on the conversation history and the results of the tools you used, 
 please provide a helpful response to the user's request.
