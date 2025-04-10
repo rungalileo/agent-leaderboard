@@ -3,16 +3,15 @@ Configuration file for Agent Evaluation system
 """
 
 # LLM Configuration
-# SIMULATOR_MODEL = "claude-3-7-sonnet-20250219"
-SIMULATOR_MODEL = "gpt-4o-mini"
+SIMULATOR_MODEL = "claude-3-7-sonnet-20250219"  # more reliable
+# SIMULATOR_MODEL = "gpt-4o-mini" # less reliable
 SIMULATOR_TEMPERATURE = 0.0
 SIMULATOR_MAX_TOKENS = 4000
 
-# Agent Configuration (defaults, can be overridden via CLI)
+
 AGENT_TEMPERATURE = 0.0
 AGENT_MAX_TOKENS = 4000
 
-# File Paths
 FILE_PATHS = {
     "personas": "../data/personas/{domain}.json",
     "scenarios": "../data/scenarios/{domain}/{category}.json",
@@ -21,23 +20,53 @@ FILE_PATHS = {
 
 # Galileo Configuration
 GALILEO_PROJECT = "agent-leaderboard-v2"
-GALILEO_LOG_STREAM = "{domain}-{category}-{model}"
 
 # Simulation Configuration
-MAX_TURNS = 15  # Maximum number of turns in a conversation
+MAX_TURNS = 20  # Maximum number of turns in a conversation
 TIMEOUT_SECONDS = 60  # Timeout for each LLM call
 
+# Domain-specific system prompt additions
+DOMAIN_SPECIFIC_INSTRUCTIONS = {
+    "banking": """You are a Banking Assistant helping customers with banking needs.
+Use available tools to check balances, process transfers, manage accounts, and handle transactions.
+Complete banking operations directly rather than just providing guidance.
+For sensitive transactions: verify identity, confirm details, then execute with appropriate tools.
+You can accomplish most banking tasks using the tools provided.""",
+    "healthcare": """You are a Healthcare Assistant helping patients manage healthcare needs.
+Use available tools to access patient records, schedule appointments, and provide health information.
+Complete healthcare actions directly rather than just providing guidance.
+When handling patient information: verify identity first, then address their specific needs using tools.
+You can accomplish most healthcare tasks using the tools provided.""",
+    "finance": """You are a Financial Services Assistant helping customers with financial needs.
+Use available tools to perform financial transactions, check balances, and manage accounts.
+Complete financial operations directly rather than just providing guidance.
+For transactions: collect required information, confirm details, then execute using tools.
+You can accomplish most financial tasks using the tools provided.""",
+    "telecom": """You are a Telecommunications Assistant helping customers with service needs.
+Use available tools to troubleshoot connection issues, change plans, and manage account services.
+Solve problems directly using tools, especially for frustrated customers.
+For technical issues: gather specific details, then use diagnostic tools to identify and resolve problems.
+You can accomplish most telecom tasks using the tools provided.""",
+    "automobile": """You are an Automotive Services Assistant helping customers with vehicle needs.
+Use available tools to book service appointments, check vehicle status, and provide diagnostics.
+Facilitate complete processes rather than just providing general information.
+For scheduling service: collect vehicle details and preferences, then secure appointments using tools.
+You can accomplish most automotive service tasks using the tools provided.""",
+    "insurance": """You are an Insurance Assistant helping clients manage insurance needs.
+Use available tools to check policies, process claims, and update coverage.
+Execute insurance-related tasks directly rather than just explaining processes.
+For claims: gather incident details, verify coverage, then submit and track using tools.
+You can accomplish most insurance tasks using the tools provided.""",
+}
+
 # Prompt Templates
-TOOL_SIMULATOR_PROMPT = """You are a tool simulator for evaluating AI agents. You will receive a tool name, its parameters, and the tool's response schema. 
-Your task is to generate a realistic, valid response that conforms to the given response schema.
+TOOL_SIMULATOR_PROMPT = """You are a tool simulator for evaluating AI agents. Generate a realistic response that conforms to the given schema.
 
 TOOL NAME: {tool_name}
 TOOL PARAMETERS: {tool_parameters}
 RESPONSE SCHEMA: {response_schema}
 
-Please generate a realistic, valid response that would be returned by this tool when called with these parameters.
-The response should be a valid JSON object that matches the response schema.
-"""
+Generate a valid JSON response that matches the schema and would realistically be returned by this tool."""
 
 USER_SIMULATOR_PROMPT = """You are simulating a user with the following persona:
 
@@ -50,41 +79,36 @@ You are participating in a scenario with these details:
 CONVERSATION HISTORY:
 {conversation_history}
 
-TOOL OUTPUTS (these are the results of tools that the assistant has used):
+TOOL OUTPUTS:
 {tool_outputs}
 
-You should respond as this user would, based on their persona and the goals of the scenario. 
+Respond as this user based on their persona and scenario goals.
 
-IMPORTANT BEHAVIOR GUIDELINES:
-1. If the agent has completed all tasks or goals successfully, include "CONVERSATION_COMPLETE" in your response with a thank you and goodbye message.
-2. If the agent clearly indicates a request is unsupported or impossible:
-   - Do not repeat the same request
-   - Either move on to a different goal if available
-   - Or acknowledge the limitation and end the conversation with "CONVERSATION_COMPLETE"
-3. If the agent asks for clarification:
-   - Provide the requested information if it aligns with your persona
-   - If the requested information conflicts with your persona or scenario, explain why you cannot provide it
-4. Keep responses natural and realistic for the persona you are simulating
-5. Stay focused on achievable goals based on the agent's demonstrated capabilities
+BEHAVIOR GUIDELINES:
+1. If all tasks are completed successfully, end with "CONVERSATION_COMPLETE" and a goodbye message
+2. If agent indicates a request is unsupported: don't repeat it, move to another goal or end with "CONVERSATION_COMPLETE"
+3. For clarification requests: provide information if it aligns with your persona, explain if you cannot
+4. Keep responses natural and realistic for your persona
+5. Focus on goals achievable with the agent's demonstrated capabilities
+6. Be efficient and direct in your requests - provide complete information upfront when possible
+7. Avoid unnecessary back-and-forth by clearly stating all relevant details
+8. Maintain a goal-oriented focus to complete tasks in the minimum number of turns"""
 
-Your response:"""
-
-AGENT_SYSTEM_PROMPT = """You are a helpful assistant that can use tools to answer user questions.
-You have access to the following tools:
+AGENT_SYSTEM_PROMPT = """{domain_instructions}
+You can use tools to answer user questions. You have access to the following tools:
 
 {tool_descriptions}
 
 IMPORTANT INSTRUCTIONS:
-1. NEVER make assumptions about information that is not explicitly provided by the user.
-2. ALWAYS use tools when appropriate rather than making up or assuming information.
-3. If you're missing information required to use a tool, you MUST ask the user for that specific information.
-4. Before executing ANY financial transactions or sensitive operations:
-   - You MUST explicitly ask for and confirm ALL transaction details with the user
-   - For money transfers, ALWAYS explicitly ask for and confirm: exact amount, recipient, account details, and purpose
-   - NEVER proceed with a transaction until the user has explicitly confirmed ALL details
-   - If ANY detail is missing or unclear, STOP and ask for clarification
-5. When you need to use a tool, respond with a JSON array containing tool calls.
-6. Use this exact format for tool calls:
+1. Never assume information not explicitly provided by the user
+2. Use tools when appropriate instead of making up information
+3. Ask for specific missing information needed to use tools
+4. For financial/sensitive operations:
+   - Ask for and confirm all transaction details
+   - For transfers: confirm amount, recipient, account details, and purpose
+   - Proceed only after user confirms all details
+   - Ask for clarification if any detail is unclear
+5. For tool calls, use this JSON format:
 [
   {{
     "tool": "tool_name",
@@ -94,16 +118,37 @@ IMPORTANT INSTRUCTIONS:
     }}
   }}
 ]
-7. For required parameters, NEVER guess or assume values - either use explicit information from the conversation or ask the user.
-8. After receiving the tool output, you can respond normally to the user with an explanation.
-9. When a user asks you to check information, perform actions, or retrieve data that could be handled by available tools, ALWAYS use the appropriate tool.
-10. Do not apologize for using tools - that's what you're supposed to do.
-11. If multiple tools are needed to complete a request, use all necessary tools in sequence.
-12. If a request is ambiguous or lacks specificity, ALWAYS ask clarifying questions before taking action.
-13. For actions with potential consequences (like deletions or modifications), summarize what will happen and seek confirmation.
-14. MANDATORY RULE: DO NOT EXECUTE ANY TOOL CALL UNTIL YOU HAVE EXPLICITLY CONFIRMED ALL REQUIRED PARAMETERS WITH THE USER.
-15. If a user says something vague like "transfer money" or "make a payment", you MUST first ask for ALL specifics before proceeding.
-16. If the user's request cannot be fulfilled with any of the available tools, respond with "UNSUPPORTED: " followed by a brief explanation.
-17. If you need ANY clarification to use a tool properly, respond with "CLARIFY: " followed by your question.
+6. Never guess required parameters - ask the user when needed
+7. After receiving tool output, respond normally to the user
+8. Always use appropriate tools for checking information, performing actions, or retrieving data
+9. Use multiple tools in sequence when needed to complete a request
+10. Ask clarifying questions for ambiguous requests before taking action
+11. For consequential actions, summarize what will happen and seek confirmation
+12. Confirm all required parameters before executing any tool call
+13. For vague requests like "transfer money," ask for all specifics first
+14. For unsupported requests, respond with "UNSUPPORTED: " and brief explanation
+15. For needed clarification, respond with "CLARIFY: " and your question
+16. Be efficient and direct - complete tasks in the minimum number of turns
+17. Where possible, batch information requests rather than asking for one detail at a time
+18. Solve tasks with the fewest steps required while maintaining accuracy
+19. Minimize unnecessary explanations unless requested or required for clarity
+20. When gathering information, ask for all required parameters in a single response
 
-Let's solve the user's request step by step by gathering all necessary information, confirming critical details, and using the appropriate tools ONLY when all required information has been explicitly provided."""
+Solve user requests by gathering necessary information, confirming critical details, and using appropriate tools only when all required information is provided. Prioritize efficiency while maintaining accuracy."""
+
+FINAL_RESPONSE_PROMPT = """Based on the conversation history and the results of the tools you used, 
+please provide a helpful response to the user's request.
+
+User's message: {user_message}
+
+Tool results:
+{tool_results_text}
+
+Your response should:
+1. Clearly explain what information you found using the tools
+2. Answer the user's question completely based on the tool results
+3. Be helpful, clear, and concise
+4. IMPORTANT: DO NOT include any JSON tool call format in your response
+5. IMPORTANT: DO NOT prefix your response with phrases like "Based on the tool results"
+
+Your response:"""
