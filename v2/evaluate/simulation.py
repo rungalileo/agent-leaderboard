@@ -172,6 +172,8 @@ Parameters:
         tool_name: str,
         tool_parameters: Dict[str, Any],
         tool_definition: Dict[str, Any],
+        conversation_history: List[Dict[str, str]] = None,
+        agent_action: str = None,
     ) -> Dict[str, Any]:
         """
         Simulate tool execution using the simulator LLM.
@@ -180,6 +182,8 @@ Parameters:
             tool_name: The name of the tool to simulate
             tool_parameters: The parameters for the tool call
             tool_definition: The definition of the tool
+            conversation_history: The conversation history so far
+            agent_action: The agent's action that led to this tool call
 
         Returns:
             Dictionary containing tool execution results and metadata
@@ -187,11 +191,30 @@ Parameters:
         # Get response schema
         response_schema = tool_definition.get("response_schema", {})
 
+        # Format conversation history for the prompt
+        formatted_history = ""
+        if conversation_history:
+            formatted_history = "\n".join(
+                [
+                    f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
+                    for msg in conversation_history[
+                        -5:
+                    ]  # Only include last 5 messages for context
+                ]
+            )
+
+        # Format agent action
+        agent_action_text = (
+            agent_action if agent_action else "No specific action provided"
+        )
+
         # Create prompt for the tool simulator
         prompt = config.TOOL_SIMULATOR_PROMPT.format(
             tool_name=tool_name,
             tool_parameters=json.dumps(tool_parameters, indent=2),
             response_schema=json.dumps(response_schema, indent=2),
+            conversation_history=formatted_history,
+            agent_action=agent_action_text,
         )
 
         # Call the simulator LLM
@@ -223,18 +246,17 @@ Parameters:
 
         # Log tool span to Galileo if logger exists
         if self.galileo_logger:
-            tool_span_metadata = {
-                "tool_name": tool_name,
-                "parameters": json.dumps(tool_parameters),
-            }
+            tool_call_id = (
+                f"{self.domain}_{self.category}_{tool_name}_{int(time.time() * 1000)}"
+            )
+
             self.galileo_logger.add_tool_span(
                 input=json.dumps(tool_parameters),
                 output=json.dumps(tool_response),
                 name=tool_name,
                 duration_ns=tool_duration_ns,
-                metadata=tool_span_metadata,
-                tags=["tool", self.domain, self.category],
-                tool_call_id=str(time.time()),
+                tags=["tool_execution", self.domain, self.category],
+                tool_call_id=tool_call_id,
             )
 
         # Return comprehensive result
@@ -305,7 +327,6 @@ Response: {json.dumps(result['response'], indent=2)}
                 input=full_prompt,
                 output=response.content,
                 model=self.agent_model,
-                tools=self.tools,
                 duration_ns=int((end_time - start_time) * 1_000_000_000),
                 name="agent_final_response",
                 tags=["agent", "final_response", self.domain, self.category],
@@ -351,7 +372,9 @@ Response: {json.dumps(result['response'], indent=2)}
         return response.content
 
     def detect_and_process_tool_calls(
-        self, agent_response: str
+        self,
+        agent_response: str,
+        conversation_history: List[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Detect tool calls in the agent's response by looking for the string "tool":
@@ -359,6 +382,7 @@ Response: {json.dumps(result['response'], indent=2)}
 
         Args:
             agent_response: The response from the agent LLM
+            conversation_history: The conversation history so far
 
         Returns:
             List of tool results
@@ -385,16 +409,6 @@ Response: {json.dumps(result['response'], indent=2)}
                             # Parse the JSON
                             tool_calls = json.loads(json_str)
 
-                            # Log tool calls if in verbose mode
-                            # if self.verbose:
-                            #     logger.info(
-                            #         log_section(
-                            #             "TOOL CALLS",
-                            #             json.dumps(tool_calls, indent=2),
-                            #             style=Fore.YELLOW,
-                            #         )
-                            #     )
-
                             # Handle both single tool call and array of tool calls
                             if isinstance(tool_calls, dict):
                                 tool_calls = [tool_calls]
@@ -410,11 +424,19 @@ Response: {json.dumps(result['response'], indent=2)}
                                     tool_definition = self._get_tool_by_name(tool_name)
 
                                     if tool_definition:
+                                        # Extract the agent's action from the response
+                                        # This is the text before the tool call JSON
+                                        agent_action = agent_response.split(json_str)[
+                                            0
+                                        ].strip()
+
                                         # Simulate the tool execution
                                         result = self.simulate_tool(
                                             tool_name=tool_name,
                                             tool_parameters=parameters,
                                             tool_definition=tool_definition,
+                                            conversation_history=conversation_history,
+                                            agent_action=agent_action,
                                         )
                                         tool_results.append(result)
                                     else:
@@ -467,18 +489,48 @@ Response: {json.dumps(result['response'], indent=2)}
         # Add the current user message
         messages.append(HumanMessage(content=user_message))
 
-        # Call the agent
+        # Call the agent for initial response/tool selection
+        tool_selection_start_time = time.time()
         agent_response = self.agent_llm.invoke(messages).content
+        tool_selection_end_time = time.time()
+        tool_selection_duration_ns = int(
+            (tool_selection_end_time - tool_selection_start_time) * 1_000_000_000
+        )
+
+        # Log the tool selection LLM span if Galileo is enabled
+        if self.galileo_logger:
+            # Convert messages to string for logging input
+            input_content = "\n".join(
+                [f"{msg.type}: {msg.content}" for msg in messages]
+            )
+
+            self.galileo_logger.add_llm_span(
+                input=input_content,
+                output=agent_response,
+                model=self.agent_model,
+                tools=tools,
+                duration_ns=tool_selection_duration_ns,
+                name="tool_selection",
+                tags=["tool_selection", self.domain, self.category],
+            )
 
         # Detect and process any tool calls in the agent's response
-        tool_results = self.detect_and_process_tool_calls(agent_response)
+        tool_results = self.detect_and_process_tool_calls(
+            agent_response=agent_response,
+            conversation_history=conversation_history,
+        )
 
         # Only generate final response if tools were used, otherwise use raw agent response
         if tool_results:
+            response_start_time = time.time()
             final_response = self.generate_final_response(
                 conversation_history=conversation_history,
                 user_message=user_message,
                 tool_results=tool_results,
+            )
+            response_end_time = time.time()
+            response_duration_ns = int(
+                (response_end_time - response_start_time) * 1_000_000_000
             )
         else:
             final_response = agent_response
@@ -488,6 +540,9 @@ Response: {json.dumps(result['response'], indent=2)}
     def run_simulation(self, scenario_idx: int = 0) -> Dict[str, Any]:
         """
         Run a full simulation for a single scenario.
+
+        Returns:
+            Dictionary containing the complete simulation results
         """
         # Get scenario and persona
         scenario = self.scenarios[scenario_idx]
@@ -509,6 +564,17 @@ Response: {json.dumps(result['response'], indent=2)}
         tool_outputs = []  # This will be used for simulating user responses
         all_tool_results = []  # This tracks all tool results across turns
         simulation_start_time = time.time()
+
+        # Initialize results container
+        results = {
+            "domain": self.domain,
+            "category": self.category,
+            "scenario_idx": scenario_idx,
+            "agent_model": self.agent_model,
+            "turns_completed": 0,
+            "turns_results": [],
+            "success": False,
+        }
 
         # Log simulation start
         sim_start_info = (
@@ -532,10 +598,16 @@ Response: {json.dumps(result['response'], indent=2)}
             # Start a workflow span for this turn
             workflow_name = f"turn_{turn_count}_workflow"
             if self.galileo_logger:
+                # For the first turn, use the scenario's first_message as input to ensure complete context
+                input_message = (
+                    scenario.get("first_message", current_user_message)
+                    if turn_count == 1
+                    else current_user_message
+                )
                 self.galileo_logger.add_workflow_span(
-                    input=current_user_message,
+                    input=input_message,
                     name=workflow_name,
-                    tags=["turn", self.domain, self.category],
+                    tags=["conversation_turn", self.domain, self.category],
                 )
 
             # Log user message
@@ -549,6 +621,10 @@ Response: {json.dumps(result['response'], indent=2)}
                 conversation_history=conversation_history,
                 tools=self.tools,
             )
+
+            # Calculate turn duration
+            turn_duration_sec = time.time() - turn_start_time
+            turn_duration_ns = int(turn_duration_sec * 1_000_000_000)
 
             # Process tools if any were detected
             if tool_results:
@@ -580,6 +656,16 @@ Response: {json.dumps(result['response'], indent=2)}
                 conversation_history, "assistant", final_response
             )
 
+            # Record turn results - only include final response, not detailed tool results
+            turn_result = {
+                "turn_id": turn_count,
+                "user_input": current_user_message,
+                "assistant_response": final_response,
+                "processing_time_ms": int(turn_duration_sec * 1000),
+            }
+            results["turns_results"].append(turn_result)
+            results["turns_completed"] += 1
+
             # Simulate user response
             user_response = self.simulate_user(
                 persona=persona,
@@ -595,10 +681,6 @@ Response: {json.dumps(result['response'], indent=2)}
 
             # Update current user message for next turn
             current_user_message = user_response
-
-            # Calculate turn duration
-            turn_duration_ns = int((time.time() - turn_start_time) * 1_000_000_000)
-            turn_duration_sec = time.time() - turn_start_time
 
             # Log turn completion
             logger.info(
@@ -634,6 +716,22 @@ Response: {json.dumps(result['response'], indent=2)}
         logger.info(log_header("SIMULATION COMPLETE", style=Fore.BLUE))
         logger.info(log_section("SUMMARY", sim_end_info, style=Fore.BLUE))
 
+        # Store conversation summary data
+        results["conversation_history"] = [
+            {"role": msg["role"], "content": msg["content"]}
+            for msg in conversation_history
+        ]
+        results["success"] = True if results["turns_completed"] > 0 else False
+        results["conversation_summary"] = (
+            f"Completed {turn_count} turns in {self.domain}/{self.category} scenario"
+        )
+        results["total_duration_ms"] = int(total_duration * 1000)
+
+        # Store tool results in debug_data for reference, but not in main results
+        results["debug_data"] = {"all_tool_results": all_tool_results}
+
+        return results
+
 
 def create_experiment_runner(
     agent_model: str,
@@ -664,7 +762,7 @@ def create_experiment_runner(
             input_data: A dictionary containing test case data
 
         Returns:
-            Results of the simulation
+            Results of the simulation as a JSON string
         """
         # Extract scenario index from input
         scenario_idx = input_data.get("scenario_idx", 0)
@@ -678,8 +776,19 @@ def create_experiment_runner(
             verbose=verbose,
         )
 
-        # Run the simulation
-        simulation.run_simulation(scenario_idx=scenario_idx)
+        # Get the first message from the scenario to include as input
+        if scenario_idx < len(simulation.scenarios):
+            scenario = simulation.scenarios[scenario_idx]
+            first_message = scenario.get("first_message", "")
+            # If it's provided as a list, extract the last content
+            if isinstance(first_message, list) and first_message:
+                first_message = first_message[-1].get("content", "")
+        else:
+            first_message = ""
+
+        # Run the simulation and get results
+        results = simulation.run_simulation(scenario_idx=scenario_idx)
+
         logger.info(
             log_section(
                 "COMPLETE",
@@ -687,6 +796,9 @@ def create_experiment_runner(
                 style=Fore.GREEN,
             )
         )
+
+        # Return results as JSON string like in simple_test.py
+        return json.dumps(results)
 
     return runner
 
@@ -765,10 +877,19 @@ def run_simulation_experiments(
                         verbose=verbose,
                     )
 
-                    # Convert scenarios to dataset format
-                    dataset = [
-                        {"scenario_idx": i} for i in range(len(simulation.scenarios))
-                    ]
+                    # Convert scenarios to dataset format - include first_message
+                    dataset = []
+                    for i, scenario in enumerate(simulation.scenarios):
+                        first_message = scenario.get("first_message", "")
+                        # Handle both string and list formats
+                        if isinstance(first_message, list) and first_message:
+                            first_message_text = first_message[-1].get("content", "")
+                        else:
+                            first_message_text = first_message
+
+                        dataset.append(
+                            {"scenario_idx": i, "first_message": first_message_text}
+                        )
 
                     logger.info(
                         log_section(

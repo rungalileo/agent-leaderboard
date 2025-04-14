@@ -64,13 +64,19 @@ You can accomplish most insurance tasks using the tools provided.""",
 }
 
 # Prompt Templates
-TOOL_SIMULATOR_PROMPT = """You are a tool simulator for evaluating AI agents. Generate a realistic response that conforms to the given schema.
+TOOL_SIMULATOR_PROMPT = """You are a tool simulator for evaluating AI agents. Generate a realistic response that conforms to the given schema and is contextually relevant to the ongoing conversation.
 
 TOOL NAME: {tool_name}
 TOOL PARAMETERS: {tool_parameters}
 RESPONSE SCHEMA: {response_schema}
 
-Generate a valid JSON response that matches the schema and would realistically be returned by this tool."""
+CONVERSATION HISTORY:
+{conversation_history}
+
+AGENT'S ACTION:
+{agent_action}
+
+Generate a valid JSON response that matches the schema and would realistically be returned by this tool. Your response should be contextually appropriate based on the conversation history and the agent's action. Make the response realistic and consistent with what a real tool would return in this specific situation."""
 
 USER_SIMULATOR_PROMPT = """You are simulating a user with the following persona:
 
