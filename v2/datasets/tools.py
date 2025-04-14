@@ -7,7 +7,7 @@ import os
 import argparse
 from dotenv import load_dotenv
 
-load_dotenv("../../.env")
+load_dotenv("../.env")
 
 MODEL = "claude-3-7-sonnet-20250219"
 
@@ -15,7 +15,7 @@ SYSTEM_PROMPT = """You are an expert AI system designer specializing in creating
 You excel at understanding industry-specific needs and translating them into well-structured JSONSchema function definitions."""
 
 HUMAN_PROMPT = """## Task Description
-Generate exactly {num_tools} function definitions for a conversational AI chatbot in the {industry} industry. These tools must follow the JSONSchema format and enable the chatbot to perform domain-specific tasks and respond to user queries effectively.
+Generate exactly {num_tools} function definitions for a customer-facing conversational AI chatbot in the {industry} industry. These tools must follow the JSONSchema format and enable the chatbot to perform domain-specific tasks and respond to customer queries effectively.
 
 ## Output Format Requirements
 Your response must be a valid JSON array containing exactly {num_tools} objects, with NO explanatory text before or after the JSON. Your entire response must be parseable with json.loads().
@@ -114,28 +114,28 @@ Before submitting your response, verify that:
 
 2. Function Scope:
    - Each function should have one clear purpose
-   - Functions should be specific to the {industry} industry
+   - Functions should be specific to the {industry} industry and customer interactions
    - Group related functions under the same system/API name
-   - Cover common user tasks and operations
+   - Cover common customer tasks, inquiries, and service operations
 
 3. Categories to Include as Needed:
-   - Information retrieval
-   - Data manipulation
+   - Customer information retrieval
+   - Product/service information
    - Transactions
    - Status checking
    - User preferences
    - Support/escalation
    - Authentication/authorization
-   - Reporting/analytics
-   - Business operations
-   - Customer support
    - Account management
-   - Inventory management
    - Order management
    - Payment processing
    - Shipping and delivery
+   - FAQ and knowledge base
+   - Appointment scheduling
+   - Customer feedback
+   - Service troubleshooting
 
-Consider the typical operations, pain points, terminology, and regulatory requirements specific to the {industry} industry.
+Consider the typical customer needs, questions, pain points, terminology, and service expectations specific to the {industry} industry.
 
 REMEMBER: Your response must be a single JSON array that can be parsed by json.loads(). Do not include any explanatory text or markdown formatting."""
 
@@ -353,3 +353,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error: {str(e)}")
         parser.print_help()
+
+# python tools.py --industry banking --num-tools 20 --overwrite

@@ -8,7 +8,7 @@ import glob
 import argparse
 from dotenv import load_dotenv
 
-load_dotenv("../../.env")
+load_dotenv("../.env")
 
 MODEL = "claude-3-7-sonnet-20250219"
 
@@ -31,44 +31,23 @@ Your response must be a valid JSON array containing exactly {num_personas} perso
   "occupation": "Current job or role",
   "background": "Brief background story",
   "personality_traits": ["trait1", "trait2", "trait3"],
-  "ai_interaction_profile": {{
-    "comfort_level": "skeptical|cautious|comfortable|enthusiastic",
-    "technical_proficiency": "low|medium|high",
-    "learning_style": "experimental|methodical|cautious",
-    "attention_span": "short|medium|long",
-    "problem_solving_approach": "systematic|intuitive|collaborative"
+  "ai_interaction": {{
+    "comfort": "skeptical|cautious|comfortable|enthusiastic",
+    "tech_proficiency": "low|medium|high",
+    "learning_style": "experimental|methodical|cautious"
   }},
-  "chatbot_interaction_patterns": {{
-    "query_style": {{
-      "verbosity": "terse|concise|detailed|verbose",
-      "structure": "unstructured|semi-structured|structured",
-      "clarity": "vague|clear|precise"
-    }},
-    "error_handling": {{
-      "response_to_mistakes": "frustrated|patient|adaptive",
-      "willingness_to_retry": "low|medium|high",
-      "feedback_style": "direct|constructive|passive"
-    }},
-    "trust_building": {{
-      "initial_trust": "skeptical|neutral|trusting",
-      "verification_needs": "high|medium|low",
-      "adaptation_speed": "slow|moderate|quick"
-    }}
+  "query_style": {{
+    "verbosity": "terse|concise|detailed|verbose",
+    "clarity": "vague|clear|precise"
   }},
-  "usage_scenarios": {{
-    "primary_goals": ["goal1", "goal2"],
-    "typical_tasks": ["task1", "task2"],
-    "pain_points": ["pain1", "pain2"],
-    "success_metrics": ["metric1", "metric2"]
+  "error_response": {{
+    "patience": "frustrated|patient|adaptive",
+    "retry_willingness": "low|medium|high"
   }},
-  "communication_preferences": {{
-    "preferred_tone": "formal|casual|friendly|professional",
-    "interaction_frequency": "rare|occasional|frequent|constant",
-    "response_expectations": {{
-      "speed": "immediate|quick|patient",
-      "detail_level": "brief|balanced|comprehensive",
-      "format_preference": ["text", "lists", "structured"]
-    }}
+  "preferences": {{
+    "tone": "formal|casual|friendly|professional",
+    "detail_level": "brief|balanced|comprehensive",
+    "format": ["text", "lists", "structured"]
   }}
 }}
 ```
@@ -80,16 +59,14 @@ Your response must be a valid JSON array containing exactly {num_personas} perso
    - Consider different learning styles and problem-solving approaches
 
 2. AI Interaction Patterns:
-   - Define how they typically phrase queries and questions
+   - Define how they typically phrase queries (verbosity, clarity)
    - Specify their response to AI mistakes or limitations
-   - Detail their trust-building process with AI systems
-   - Include their typical goals and success metrics
+   - Consider their comfort level with AI systems
 
 3. Behavioral Aspects:
-   - How they handle uncertainty or unclear responses
-   - Their patience level with AI systems
-   - Their willingness to explore or experiment
-   - Their preferred communication style and tone
+   - How they handle errors and their patience level
+   - Their willingness to retry after failures
+   - Their preferred tone and detail level in communications
 
 4. Ensure personas:
    - Are realistic and relatable
@@ -153,10 +130,10 @@ def validate_persona_schema(persona: dict) -> bool:
         "occupation",
         "background",
         "personality_traits",
-        "ai_interaction_profile",
-        "chatbot_interaction_patterns",
-        "usage_scenarios",
-        "communication_preferences",
+        "ai_interaction",
+        "query_style",
+        "error_response",
+        "preferences",
     }
 
     if not all(field in persona for field in required_fields):
@@ -165,23 +142,23 @@ def validate_persona_schema(persona: dict) -> bool:
     if not isinstance(persona["personality_traits"], list):
         return False
 
-    if not isinstance(persona["ai_interaction_profile"], dict):
+    if not isinstance(persona["ai_interaction"], dict):
         return False
 
-    if not isinstance(persona["chatbot_interaction_patterns"], dict):
+    if not isinstance(persona["query_style"], dict):
         return False
 
-    if not isinstance(persona["usage_scenarios"], dict):
+    if not isinstance(persona["error_response"], dict):
         return False
 
-    if not isinstance(persona["communication_preferences"], dict):
+    if not isinstance(persona["preferences"], dict):
         return False
 
     # Validate AI interaction profile
-    ai_profile = persona["ai_interaction_profile"]
+    ai_profile = persona["ai_interaction"]
     if not all(
         field in ai_profile
-        for field in ["comfort_level", "technical_proficiency", "learning_style"]
+        for field in ["comfort", "tech_proficiency", "learning_style"]
     ):
         return False
 
@@ -260,7 +237,7 @@ if __name__ == "__main__":
 
     # Required arguments
     parser.add_argument(
-        "--name",
+        "--file-name",
         type=str,
         required=True,
         help="Name for the persona set (used in output filename)",
@@ -322,3 +299,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error: {str(e)}")
         parser.print_help()
+
+# python personas.py --file-name banking.json --num-personas 20 --tools-file ../data/tools/banking.json --overwrite
