@@ -1,12 +1,12 @@
-import time
 import json
-import re
+import time
+import sys
 import os
-from colorama import init, Fore, Style
-import concurrent.futures
+from typing import Dict, List, Any, Optional, Callable
+from colorama import Fore, Style
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
 
-from typing import Dict, List, Any, Optional
-from langchain_core.messages import HumanMessage
 import config
 from llm_handler import LLMHandler
 from galileo import galileo_context
@@ -21,6 +21,10 @@ from utils import (
     ensure_string,
     ConversationHistoryManager,
 )
+
+from simulator.llm_agent import LLMAgent
+from simulator.tool_simulator import ToolSimulator, ToolHandler
+from simulator.user_simulator import UserSimulator
 
 load_dotenv("../.env")
 
@@ -87,59 +91,48 @@ class AgentSimulation:
         else:
             self.galileo_logger = None
 
+        # Initialize the refactored modules
+        # Tool simulator
+        self.tool_simulator = ToolSimulator(
+            domain=domain,
+            category=category,
+            simulator_llm=self.simulator_llm,
+            galileo_logger=self.galileo_logger,
+        )
+
+        # Tool handler
+        self.tool_handler = ToolHandler(
+            domain=domain,
+            category=category,
+            tools=self.tools,
+            tool_simulator=self.tool_simulator,
+            galileo_logger=self.galileo_logger,
+        )
+
+        # Agent
+        self.agent = LLMAgent(
+            model_name=agent_model,
+            agent_llm=self.agent_llm,
+            tool_handler=self.tool_handler,
+            domain=domain,
+            category=category,
+            galileo_logger=self.galileo_logger,
+            verbose=verbose,
+            history_manager=self.history_manager,
+        )
+
+        # User simulator
+        self.user_simulator = UserSimulator(
+            simulator_llm=self.simulator_llm,
+            history_manager=self.history_manager,
+        )
+
         logger.info(
             log_header(
                 f"SIMULATION INITIALIZED: {self.agent_model} - {self.domain}/{self.category}",
                 style=Fore.CYAN,
             )
         )
-
-    def update_agent_prompt(self, tools: List[Dict[str, Any]]) -> str:
-        """
-        Create a system prompt for the agent that instructs it to use tools.
-
-        Args:
-            tools: List of tools available to the agent
-
-        Returns:
-            A system prompt instructing the agent to use tools
-        """
-        tool_descriptions = []
-        for tool in tools:
-            description = tool.get("description", "")
-            name = tool.get("title", "")
-            parameters = tool.get("properties", {})
-            required = tool.get("required", [])
-
-            param_descriptions = []
-            for param_name, param_info in parameters.items():
-                param_desc = f"- {param_name}: {param_info.get('description', '')}"
-                if param_name in required:
-                    param_desc += " (REQUIRED)"
-                param_descriptions.append(param_desc)
-
-            tool_description = f"""
-Function: {name}
-Description: {description}
-Parameters:
-{chr(10).join(param_descriptions)}
-"""
-            tool_descriptions.append(tool_description)
-
-        # Get domain-specific instructions
-        domain_instructions = ""
-        if self.domain.lower() in config.DOMAIN_SPECIFIC_INSTRUCTIONS:
-            domain_instructions = config.DOMAIN_SPECIFIC_INSTRUCTIONS[
-                self.domain.lower()
-            ]
-
-        # Return formatted prompt from config with schema added
-        prompt = config.AGENT_SYSTEM_PROMPT.format(
-            tool_descriptions=chr(10).join(tool_descriptions),
-            domain_instructions=domain_instructions,
-        )
-
-        return prompt
 
     def _load_tools(self) -> List[Dict[str, Any]]:
         """Load tools for the specified domain."""
@@ -160,434 +153,6 @@ Parameters:
         )
         with open(path, "r") as f:
             return json.load(f)
-
-    def _get_tool_by_name(self, tool_name: str) -> Optional[Dict[str, Any]]:
-        """Get tool definition by name."""
-        for tool in self.tools:
-            if tool.get("title") == tool_name:
-                return tool
-        return None
-
-    def simulate_tool(
-        self,
-        tool_name: str,
-        tool_parameters: Dict[str, Any],
-        tool_definition: Dict[str, Any],
-        conversation_history: List[Dict[str, str]] = None,
-        agent_action: str = None,
-    ) -> Dict[str, Any]:
-        """
-        Simulate tool execution using the simulator LLM.
-
-        Args:
-            tool_name: The name of the tool to simulate
-            tool_parameters: The parameters for the tool call
-            tool_definition: The definition of the tool
-            conversation_history: The conversation history so far
-            agent_action: The agent's action that led to this tool call
-
-        Returns:
-            Dictionary containing tool execution results and metadata
-        """
-        # Get response schema
-        response_schema = tool_definition.get("response_schema", {})
-
-        # Format conversation history for the prompt
-        formatted_history = ""
-        if conversation_history:
-            formatted_history = "\n".join(
-                [
-                    f"{msg.get('role', 'unknown')}: {msg.get('content', '')}"
-                    for msg in conversation_history[
-                        -5:
-                    ]  # Only include last 5 messages for context
-                ]
-            )
-
-        # Format agent action
-        agent_action_text = (
-            agent_action if agent_action else "No specific action provided"
-        )
-
-        # Create prompt for the tool simulator
-        prompt = config.TOOL_SIMULATOR_PROMPT.format(
-            tool_name=tool_name,
-            tool_parameters=json.dumps(tool_parameters, indent=2),
-            response_schema=json.dumps(response_schema, indent=2),
-            conversation_history=formatted_history,
-            agent_action=agent_action_text,
-        )
-
-        # Call the simulator LLM
-        start_time = time.time()
-        response = self.simulator_llm.invoke([HumanMessage(content=prompt)])
-        end_time = time.time()
-        tool_duration_ns = int((end_time - start_time) * 1_000_000_000)
-
-        # Parse the response as JSON
-        response_content = response.content
-        # Extract JSON content if wrapped in markdown code blocks
-        if "```json" in response_content:
-            json_match = re.search(r"```json\s*([\s\S]+?)```", response_content)
-            if json_match:
-                response_content = json_match.group(1)
-
-        tool_response = json.loads(response_content)
-
-        # Format tool execution info for logging with properly formatted JSON
-        tool_info = (
-            f"{Fore.MAGENTA}TOOL:{Style.RESET_ALL} {tool_name} | "
-            f"{Fore.YELLOW}Duration:{Style.RESET_ALL} {end_time - start_time:.4f}s\n"
-            f"{Fore.YELLOW}Parameters:{Style.RESET_ALL}\n{json.dumps(tool_parameters, indent=2)}\n"
-            f"{Fore.YELLOW}Response:{Style.RESET_ALL}\n{json.dumps(tool_response, indent=2)}"
-        )
-
-        # Log the tool execution
-        logger.info(log_section("TOOL SIMULATION", tool_info, style=Fore.MAGENTA))
-
-        # Log tool span to Galileo if logger exists
-        if self.galileo_logger:
-            tool_call_id = (
-                f"{self.domain}_{self.category}_{tool_name}_{int(time.time() * 1000)}"
-            )
-
-            self.galileo_logger.add_tool_span(
-                input=json.dumps(tool_parameters),
-                output=json.dumps(tool_response),
-                name=tool_name,
-                duration_ns=tool_duration_ns,
-                tags=["tool_execution", self.domain, self.category],
-                tool_call_id=tool_call_id,
-            )
-
-        # Return comprehensive result
-        return {
-            "tool_name": tool_name,
-            "parameters": tool_parameters,
-            "response": tool_response,
-            "duration_ns": tool_duration_ns,
-        }
-
-    def generate_final_response(
-        self,
-        conversation_history: List[Dict[str, str]],
-        user_message: str,
-        tool_results: List[Dict[str, Any]],
-    ) -> str:
-        """
-        Generate a final response based on tool results.
-
-        Args:
-            conversation_history: The conversation history
-            user_message: The user's message
-            tool_results: Results from tool execution
-
-        Returns:
-            The agent's final response
-        """
-        # If no tool results, we should not generate a new response.
-        # This should never actually happen with the current implementation, but keeping as a safeguard.
-        if not tool_results:
-            return "No tools were used."
-
-        # Format the tool results for the prompt
-        tool_results_text = ""
-        for result in tool_results:
-            tool_results_text += f"""
-Tool: {result['tool_name']}
-Parameters: {json.dumps(result['parameters'], indent=2)}
-Response: {json.dumps(result['response'], indent=2)}
-"""
-
-        # Create a prompt for the agent to generate a final response
-        prompt = config.FINAL_RESPONSE_PROMPT.format(
-            user_message=user_message, tool_results_text=tool_results_text
-        )
-
-        # Filter and format conversation history
-        messages = self.history_manager.filter_for_final_response(conversation_history)
-
-        # Add the prompt with tool results
-        messages.append(HumanMessage(content=prompt))
-
-        if self.verbose:
-            logger.info("Generating final response using tool results")
-            logger.info(f"Tool results count: {len(tool_results)}")
-
-        # Prepare full prompt for logging
-        full_prompt = "\n".join([msg.content for msg in messages])
-
-        # Call the agent to generate the final response
-        start_time = time.time()
-        response = self.agent_llm.invoke(messages)
-        end_time = time.time()
-
-        # Log the full prompt to Galileo if logger exists
-        if self.galileo_logger:
-            self.galileo_logger.add_llm_span(
-                input=full_prompt,
-                output=response.content,
-                model=self.agent_model,
-                duration_ns=int((end_time - start_time) * 1_000_000_000),
-                name="agent_final_response",
-                tags=["agent", "final_response", self.domain, self.category],
-            )
-
-        return response.content
-
-    def simulate_user(
-        self,
-        persona: Dict[str, Any],
-        scenario: Dict[str, Any],
-        conversation_history: List[Dict[str, str]],
-        tool_outputs: List[Dict[str, Any]],
-    ) -> str:
-        """
-        Simulate user response using the simulator LLM.
-
-        Args:
-            persona: The persona object for the user
-            scenario: The scenario object for the simulation
-            conversation_history: The conversation history so far
-            tool_outputs: List of tool outputs from previous turns
-
-        Returns:
-            The simulated user response
-        """
-        # Format conversation history for the prompt
-        formatted_history = self.history_manager.format_for_display(
-            conversation_history
-        )
-
-        # Create prompt for the user simulator
-        prompt = config.USER_SIMULATOR_PROMPT.format(
-            persona_json=json.dumps(persona, indent=2),
-            scenario_json=json.dumps(scenario, indent=2),
-            conversation_history=formatted_history,
-            tool_outputs=json.dumps(tool_outputs, indent=2),
-        )
-
-        # Call the simulator LLM
-        response = self.simulator_llm.invoke([HumanMessage(content=prompt)])
-
-        return response.content
-
-    def detect_and_process_tool_calls(
-        self,
-        agent_response: str,
-        conversation_history: List[Dict[str, str]] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Detect tool calls in the agent's response by looking for the string "tool":
-        and process them using the tool simulator. Uses concurrent execution when multiple tools are called.
-
-        Args:
-            agent_response: The response from the agent LLM
-            conversation_history: The conversation history so far
-
-        Returns:
-            List of tool results
-        """
-        tool_calls = []
-
-        try:
-            # Check if the response contains a tool call
-            if '"tool":' in agent_response or '"name":' in agent_response:
-                # Try to extract JSON from the response
-                json_pattern = r'\[?\s*{.*"(?:tool|name)":.+}\s*\]?'
-                json_matches = re.findall(json_pattern, agent_response, re.DOTALL)
-
-                if json_matches:
-                    for json_str in json_matches:
-                        # Make sure we have valid JSON
-                        if not (json_str.startswith("[") and json_str.endswith("]")):
-                            if not (
-                                json_str.startswith("{") and json_str.endswith("}")
-                            ):
-                                json_str = f"{json_str}"
-
-                        try:
-                            # Parse the JSON
-                            parsed_tool_calls = json.loads(json_str)
-
-                            # Handle both single tool call and array of tool calls
-                            if isinstance(parsed_tool_calls, dict):
-                                parsed_tool_calls = [parsed_tool_calls]
-
-                            for tool_call in parsed_tool_calls:
-                                tool_name = tool_call.get("tool") or tool_call.get(
-                                    "name"
-                                )
-                                parameters = tool_call.get("parameters", {})
-
-                                if tool_name:
-                                    # Get the tool definition
-                                    tool_definition = self._get_tool_by_name(tool_name)
-
-                                    if tool_definition:
-                                        # Extract the agent's action from the response
-                                        # This is the text before the tool call JSON
-                                        agent_action = agent_response.split(json_str)[
-                                            0
-                                        ].strip()
-
-                                        # Store tool call info for concurrent execution
-                                        tool_calls.append(
-                                            {
-                                                "tool_name": tool_name,
-                                                "parameters": parameters,
-                                                "tool_definition": tool_definition,
-                                                "agent_action": agent_action,
-                                            }
-                                        )
-                                    else:
-                                        logger.warning(
-                                            f"Tool '{tool_name}' not found in available tools"
-                                        )
-                        except json.JSONDecodeError as e:
-                            logger.warning(
-                                log_section(
-                                    "ERROR",
-                                    f"Failed to parse tool call JSON: {e}\n\nProblematic JSON string: {json_str}",
-                                    style=Fore.RED,
-                                )
-                            )
-
-            # If we have multiple tool calls, execute them concurrently
-            if len(tool_calls) > 1:
-                logger.info(
-                    log_section(
-                        "TOOLS",
-                        f"Processing {len(tool_calls)} tools concurrently",
-                        style=Fore.YELLOW,
-                    )
-                )
-
-                # Define a function to execute a single tool
-                def execute_tool(tool_info):
-                    return self.simulate_tool(
-                        tool_name=tool_info["tool_name"],
-                        tool_parameters=tool_info["parameters"],
-                        tool_definition=tool_info["tool_definition"],
-                        conversation_history=conversation_history,
-                        agent_action=tool_info["agent_action"],
-                    )
-
-                # Execute tools concurrently
-                tool_results = []
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future_to_tool = {
-                        executor.submit(execute_tool, tool_info): tool_info
-                        for tool_info in tool_calls
-                    }
-
-                    for future in concurrent.futures.as_completed(future_to_tool):
-                        try:
-                            result = future.result()
-                            tool_results.append(result)
-                        except Exception as exc:
-                            tool_info = future_to_tool[future]
-                            logger.error(
-                                f"Tool execution failed for {tool_info['tool_name']}: {exc}"
-                            )
-
-                return tool_results
-            elif len(tool_calls) == 1:
-                # For a single tool, just execute it directly
-                tool_info = tool_calls[0]
-                result = self.simulate_tool(
-                    tool_name=tool_info["tool_name"],
-                    tool_parameters=tool_info["parameters"],
-                    tool_definition=tool_info["tool_definition"],
-                    conversation_history=conversation_history,
-                    agent_action=tool_info["agent_action"],
-                )
-                return [result]
-
-            return []
-
-        except Exception as e:
-            logger.error(f"Error detecting tool calls: {str(e)}")
-            return []
-
-    def run_agent(
-        self,
-        user_message: str,
-        conversation_history: List[Dict[str, str]],
-        tools: List[Dict[str, Any]],
-    ) -> tuple:
-        """
-        Run the agent LLM with the provided user message and tools.
-
-        Args:
-            user_message: The user message to respond to
-            conversation_history: The conversation history so far
-            tools: The tools available to the agent
-
-        Returns:
-            A tuple of (final_response, tool_results)
-        """
-
-        start_time = time.time()
-
-        # Create system prompt with tools
-        system_prompt = self.update_agent_prompt(tools)
-
-        # Convert conversation history to LangChain messages
-        messages = self.history_manager.to_langchain_messages(
-            conversation_history, system_prompt
-        )
-
-        # Add the current user message
-        messages.append(HumanMessage(content=user_message))
-
-        # Call the agent for initial response/tool selection
-        tool_selection_start_time = time.time()
-        agent_response = self.agent_llm.invoke(messages).content
-        tool_selection_end_time = time.time()
-        tool_selection_duration_ns = int(
-            (tool_selection_end_time - tool_selection_start_time) * 1_000_000_000
-        )
-
-        # Log the tool selection LLM span if Galileo is enabled
-        if self.galileo_logger:
-            # Convert messages to string for logging input
-            input_content = "\n".join(
-                [f"{msg.type}: {msg.content}" for msg in messages]
-            )
-
-            self.galileo_logger.add_llm_span(
-                input=input_content,
-                output=agent_response,
-                model=self.agent_model,
-                tools=tools,
-                duration_ns=tool_selection_duration_ns,
-                name="tool_selection",
-                tags=["tool_selection", self.domain, self.category],
-            )
-
-        # Detect and process any tool calls in the agent's response
-        tool_results = self.detect_and_process_tool_calls(
-            agent_response=agent_response,
-            conversation_history=conversation_history,
-        )
-
-        # Only generate final response if tools were used, otherwise use raw agent response
-        if tool_results:
-            response_start_time = time.time()
-            final_response = self.generate_final_response(
-                conversation_history=conversation_history,
-                user_message=user_message,
-                tool_results=tool_results,
-            )
-            response_end_time = time.time()
-            response_duration_ns = int(
-                (response_end_time - response_start_time) * 1_000_000_000
-            )
-        else:
-            final_response = agent_response
-
-        return final_response, tool_results
 
     def run_simulation(self, scenario_idx: int = 0) -> Dict[str, Any]:
         """
@@ -667,8 +232,8 @@ Response: {json.dumps(result['response'], indent=2)}
                 log_section("USER MESSAGE", current_user_message, style=Fore.BLUE)
             )
 
-            # Run the agent and get response
-            final_response, tool_results = self.run_agent(
+            # Run the agent and get response - using refactored agent
+            final_response, tool_results = self.agent.run_agent(
                 user_message=current_user_message,
                 conversation_history=conversation_history,
                 tools=self.tools,
@@ -718,8 +283,8 @@ Response: {json.dumps(result['response'], indent=2)}
             results["turns_results"].append(turn_result)
             results["turns_completed"] += 1
 
-            # Simulate user response
-            user_response = self.simulate_user(
+            # Simulate user response - using refactored user simulator
+            user_response = self.user_simulator.simulate_user(
                 persona=persona,
                 scenario=scenario,
                 conversation_history=conversation_history,

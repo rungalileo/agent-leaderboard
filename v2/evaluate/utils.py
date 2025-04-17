@@ -255,3 +255,20 @@ def ensure_string(value: Any) -> str:
     except Exception as e:
         print(f"Error converting to string: {str(e)}")
         return f"[Unconvertible data: {type(value).__name__}]"
+
+# Initialize the logger for module-level access
+logger = setup_logger()
+
+# Export symbols
+__all__ = [
+    "logger",
+    "log_section",
+    "log_header",
+    "Fore",
+    "Style",
+    "Back",
+    "ConversationHistoryManager",
+    "format_json_for_display",
+    "ensure_string",
+    "setup_logger",
+]
