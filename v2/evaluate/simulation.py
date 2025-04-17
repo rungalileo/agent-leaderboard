@@ -3,6 +3,7 @@ import json
 import re
 import os
 from colorama import init, Fore, Style
+import concurrent.futures
 
 from typing import Dict, List, Any, Optional
 from langchain_core.messages import HumanMessage
@@ -378,7 +379,7 @@ Response: {json.dumps(result['response'], indent=2)}
     ) -> List[Dict[str, Any]]:
         """
         Detect tool calls in the agent's response by looking for the string "tool":
-        and process them using the tool simulator.
+        and process them using the tool simulator. Uses concurrent execution when multiple tools are called.
 
         Args:
             agent_response: The response from the agent LLM
@@ -387,7 +388,7 @@ Response: {json.dumps(result['response'], indent=2)}
         Returns:
             List of tool results
         """
-        tool_results = []
+        tool_calls = []
 
         try:
             # Check if the response contains a tool call
@@ -407,13 +408,13 @@ Response: {json.dumps(result['response'], indent=2)}
 
                         try:
                             # Parse the JSON
-                            tool_calls = json.loads(json_str)
+                            parsed_tool_calls = json.loads(json_str)
 
                             # Handle both single tool call and array of tool calls
-                            if isinstance(tool_calls, dict):
-                                tool_calls = [tool_calls]
+                            if isinstance(parsed_tool_calls, dict):
+                                parsed_tool_calls = [parsed_tool_calls]
 
-                            for tool_call in tool_calls:
+                            for tool_call in parsed_tool_calls:
                                 tool_name = tool_call.get("tool") or tool_call.get(
                                     "name"
                                 )
@@ -430,15 +431,15 @@ Response: {json.dumps(result['response'], indent=2)}
                                             0
                                         ].strip()
 
-                                        # Simulate the tool execution
-                                        result = self.simulate_tool(
-                                            tool_name=tool_name,
-                                            tool_parameters=parameters,
-                                            tool_definition=tool_definition,
-                                            conversation_history=conversation_history,
-                                            agent_action=agent_action,
+                                        # Store tool call info for concurrent execution
+                                        tool_calls.append(
+                                            {
+                                                "tool_name": tool_name,
+                                                "parameters": parameters,
+                                                "tool_definition": tool_definition,
+                                                "agent_action": agent_action,
+                                            }
                                         )
-                                        tool_results.append(result)
                                     else:
                                         logger.warning(
                                             f"Tool '{tool_name}' not found in available tools"
@@ -452,7 +453,58 @@ Response: {json.dumps(result['response'], indent=2)}
                                 )
                             )
 
-            return tool_results
+            # If we have multiple tool calls, execute them concurrently
+            if len(tool_calls) > 1:
+                logger.info(
+                    log_section(
+                        "TOOLS",
+                        f"Processing {len(tool_calls)} tools concurrently",
+                        style=Fore.YELLOW,
+                    )
+                )
+
+                # Define a function to execute a single tool
+                def execute_tool(tool_info):
+                    return self.simulate_tool(
+                        tool_name=tool_info["tool_name"],
+                        tool_parameters=tool_info["parameters"],
+                        tool_definition=tool_info["tool_definition"],
+                        conversation_history=conversation_history,
+                        agent_action=tool_info["agent_action"],
+                    )
+
+                # Execute tools concurrently
+                tool_results = []
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future_to_tool = {
+                        executor.submit(execute_tool, tool_info): tool_info
+                        for tool_info in tool_calls
+                    }
+
+                    for future in concurrent.futures.as_completed(future_to_tool):
+                        try:
+                            result = future.result()
+                            tool_results.append(result)
+                        except Exception as exc:
+                            tool_info = future_to_tool[future]
+                            logger.error(
+                                f"Tool execution failed for {tool_info['tool_name']}: {exc}"
+                            )
+
+                return tool_results
+            elif len(tool_calls) == 1:
+                # For a single tool, just execute it directly
+                tool_info = tool_calls[0]
+                result = self.simulate_tool(
+                    tool_name=tool_info["tool_name"],
+                    tool_parameters=tool_info["parameters"],
+                    tool_definition=tool_info["tool_definition"],
+                    conversation_history=conversation_history,
+                    agent_action=tool_info["agent_action"],
+                )
+                return [result]
+
+            return []
 
         except Exception as e:
             logger.error(f"Error detecting tool calls: {str(e)}")

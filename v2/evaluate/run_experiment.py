@@ -58,7 +58,7 @@ def main():
     parser.add_argument(
         "--metrics",
         type=str,
-        default="tool_selection_quality",
+        default="tool_selection_quality, agentic_workflow_success, agentic_session_success",
         help="Comma-separated list of metrics to evaluate",
     )
 
