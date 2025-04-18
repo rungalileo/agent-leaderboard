@@ -234,10 +234,10 @@ if __name__ == "__main__":
 
     # No galileo_context here - we're creating new loggers for each turn
     results = run_experiment(
-        experiment_name,
+        experiment_name=experiment_name,
         dataset=weather_dataset,
         function=weather_conversation_function,
         metrics=["tool_selection_quality"],
-        project="test-project",
+        project="agent-leaderboard-test",
     )
     print(f"Experiment completed with {len(results)} data points")
