@@ -6,6 +6,7 @@ from typing import Dict, List, Any, Optional, Callable
 from colorama import Fore, Style
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
+import pandas as pd
 
 import config
 from llm_handler import LLMHandler
@@ -28,7 +29,8 @@ from simulator.user_simulator import UserSimulator
 
 load_dotenv("../.env")
 
-logger = setup_logger()
+# Initialize logger without verbose flag by default
+logger = setup_logger(verbose=False)
 
 class AgentSimulation:
 
@@ -56,6 +58,10 @@ class AgentSimulation:
         self.log_to_galileo = log_to_galileo
         self.verbose = verbose
         self.history_manager = ConversationHistoryManager()
+
+        # Reinitialize the logger with the verbose flag
+        global logger
+        logger = setup_logger(verbose=verbose)
 
         # Initialize LLM handler
         self.llm_handler = LLMHandler()
@@ -429,6 +435,7 @@ def run_simulation_experiments(
     metrics: List[str] = config.METRICS,
     verbose: bool = False,
     log_to_galileo: bool = False,
+    add_timestamp: bool = True,
 ):
     """
     Run experiments for all combinations of models, domains, and categories.
@@ -442,11 +449,12 @@ def run_simulation_experiments(
         metrics: List of metrics to evaluate
         verbose: Whether to print verbose logs
         log_to_galileo: Whether to log to Galileo
+        add_timestamp: Whether to add timestamp to experiment name
 
     Returns:
         Dictionary of experiment results
     """
-    results = []
+    formatted_results = {}
 
     # Format model names for display
     model_names = ", ".join([m.split("/")[-1] if "/" in m else m for m in models])
@@ -463,11 +471,14 @@ def run_simulation_experiments(
     for model in models:
         for domain in domains:
             for category in categories:
-                # Add timestamp to experiment name to ensure uniqueness
-                timestamp = int(time.time())
-                experiment_name = (
-                    f"{model.replace('/', '-')}-{domain}-{category}-{timestamp}"
-                )
+                # Create experiment name, add timestamp only if flag is set
+                if add_timestamp:
+                    timestamp = int(time.time())
+                    experiment_name = (
+                        f"{model.replace('/', '-')}-{domain}-{category}-{timestamp}"
+                    )
+                else:
+                    experiment_name = f"{model.replace('/', '-')}-{domain}-{category}"
 
                 exp_info = f"Model: {model} | Domain: {domain} | Category: {category}"
                 logger.info(log_section("EXPERIMENT", exp_info, style=Fore.YELLOW))
@@ -524,7 +535,18 @@ def run_simulation_experiments(
                     function=runner,
                     metrics=metrics,
                 )
-                results.append(result)
+                exp_data = result["experiment"]
+                formatted_results[exp_data.name] = {
+                    "model_name": model,
+                    "category": category,
+                    "domain": domain,
+                    "project_id": exp_data.project_id,
+                    "id": exp_data.id,
+                    "name": exp_data.name,
+                    "created_at": str(exp_data.created_at),
+                    "link": result["link"],
+                    "message": result["message"],
+                }
 
                 logger.info(
                     log_section(
@@ -533,7 +555,67 @@ def run_simulation_experiments(
                 )
 
     logger.info(log_header("ALL EXPERIMENTS COMPLETED", style=Fore.MAGENTA))
-    logger.info(
-        log_section("RESULTS", f"Total experiments: {len(results)}", style=Fore.MAGENTA)
-    )
-    return results
+
+    os.makedirs("../data/results", exist_ok=True)
+    for exp_name, result in formatted_results.items():
+        with open(f"../data/results/{exp_name}.json", "w") as f:
+            json.dump(result, f, indent=2)
+
+    # Save results to CSV files organized by model name
+    save_results_to_csv(formatted_results)
+
+    return formatted_results
+
+
+def save_results_to_csv(formatted_results: Dict[str, Dict[str, Any]]):
+    """
+    Save formatted experiment results to CSV files organized by model name.
+
+    Args:
+        formatted_results: Dictionary of experiment results
+    """
+    # Create experiments directory if it doesn't exist
+    os.makedirs("../data/experiments", exist_ok=True)
+
+    # Group results by model name
+    model_results = {}
+    for exp_name, result in formatted_results.items():
+        # Extract model name from experiment name (format: model-domain-category-timestamp)
+        model_name = result["model_name"]
+
+        if model_name not in model_results:
+            model_results[model_name] = []
+
+        # Add this result to the model's results list
+        result_row = {
+            "domain": result["domain"],
+            "category": result["category"],
+            "link": result["link"],
+            "experiment_name": exp_name,
+            "project_id": result["project_id"],
+            "experiment_id": result["id"],
+            "created_at": result["created_at"],
+            "message": result["message"],
+        }
+        model_results[model_name].append(result_row)
+
+    # Save each model's results to its own CSV file
+    for model_name, results in model_results.items():
+        csv_path = f"../data/experiments/{model_name}.csv"
+        df = pd.DataFrame(results)
+
+        # Check if file exists and append if it does
+        if os.path.exists(csv_path):
+            existing_df = pd.read_csv(csv_path)
+            # Combine with new results
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+            # Remove duplicates based on experiment_id
+            combined_df = combined_df.drop_duplicates(
+                subset=["experiment_id"], keep="last"
+            )
+            combined_df.to_csv(csv_path, index=False)
+            logger.info(f"Updated results for {model_name} in {csv_path}")
+        else:
+            # Create new file
+            df.to_csv(csv_path, index=False)
+            logger.info(f"Saved results for {model_name} to {csv_path}")

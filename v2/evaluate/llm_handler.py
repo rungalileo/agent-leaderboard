@@ -192,45 +192,34 @@ class LLMHandler:
         model_params = {k: v for k, v in model_params.items() if v is not None}
 
         if provider == "anthropic":
-            print("Using Anthropic AI")
             return ChatAnthropic(model_name=model_name, **model_params)
 
         elif provider == "mistral":
-            print("Using Mistral AI")
             return ChatMistralAI(model_name=model_name, **model_params)
 
         elif provider == "google":
-            print("Using Google Generative AI")
             return ChatGoogleGenerativeAI(model=model_name, **model_params)
 
         elif provider == "together":
-            print("Using ChatTogether")
             return ChatTogether(model=model_name, **model_params)
 
         elif provider == "openai":
-            print("Using OpenAI")
             return ChatOpenAI(model=model_name, **model_params)
 
         elif provider == "fireworks":
-            print("Using Fireworks")
             return ChatFireworks(model=model_name, **model_params)
 
         elif provider == "bedrock":
-            print("Using Bedrock")
             return ChatBedrock(model_id=model_name, **model_params)
 
         elif provider == "cohere":
-            print("Using Cohere")
             return ChatCohere(model=model_name, **model_params)
 
         elif provider == "nvidia":
-            print("Using NVIDIA")
             return ChatNVIDIA(model=model_name, **model_params)
 
         elif provider == "writer":
-            print("Using Writer")
             return ChatWriter(model=model_name, **model_params)
 
         elif provider == "deepseek":
-            print("Using DeepSeek")
             return ChatDeepSeek(model=model_name, **model_params)

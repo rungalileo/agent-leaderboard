@@ -72,6 +72,13 @@ def main():
     )
 
     parser.add_argument(
+        "--add-timestamp",
+        action="store_true",
+        default=False,
+        help="Add timestamp to experiment name",
+    )
+
+    parser.add_argument(
         "--output-file", type=str, help="File to save experiment results (JSON format)"
     )
 
@@ -91,11 +98,12 @@ def main():
         print(f"  Metrics: {metrics}")
         print(f"  Project: {args.project}")
         print(f"  Log to Galileo: {args.log_to_galileo}")
+        print(f"  Add timestamp to experiment name: {args.add_timestamp}")
         if args.dataset_name:
             print(f"  Dataset: {args.dataset_name}")
 
     # Run experiments
-    results = run_simulation_experiments(
+    _ = run_simulation_experiments(
         models=models,
         domains=domains,
         categories=categories,
@@ -104,26 +112,8 @@ def main():
         metrics=metrics,
         verbose=args.verbose,
         log_to_galileo=args.log_to_galileo,
+        add_timestamp=args.add_timestamp,
     )
-
-    # Format results to include only required fields
-    formatted_results = {}
-
-    for result in results:
-        exp_data = result["experiment"]
-        formatted_results[exp_data.name] = {
-            "project_id": exp_data.project_id,
-            "id": exp_data.id,
-            "name": exp_data.name,
-            "created_at": str(exp_data.created_at),
-            "link": result["link"],
-            "message": result["message"],
-        }
-
-    os.makedirs("../data/results", exist_ok=True)
-    for exp_name, result in formatted_results.items():
-        with open(f"../data/results/{exp_name}.json", "w") as f:
-            json.dump(result, f, indent=2)
 
 
 if __name__ == "__main__":

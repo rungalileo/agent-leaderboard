@@ -125,10 +125,19 @@ class ConversationHistoryManager:
 
 
 # Set up logging
-def setup_logger():
-    """Configure and return a logger with custom formatting"""
+def setup_logger(verbose=False):
+    """Configure and return a logger with custom formatting
+
+    Args:
+        verbose: If True, logs at INFO level will be shown; otherwise only WARNING and higher levels
+    """
     logger = logging.getLogger("agent_simulation")
-    logger.setLevel(logging.INFO)
+
+    # Set the logger level based on the verbose flag
+    if verbose:
+        logger.setLevel(logging.INFO)
+    else:
+        logger.setLevel(logging.WARNING)
 
     # Clear existing handlers if any
     if logger.handlers:
@@ -136,7 +145,10 @@ def setup_logger():
 
     # Create console handler with formatting
     ch = logging.StreamHandler()
-    ch.setLevel(logging.INFO)
+    if verbose:
+        ch.setLevel(logging.INFO)
+    else:
+        ch.setLevel(logging.WARNING)
 
     # Create a custom formatter
     formatter = logging.Formatter(
@@ -257,7 +269,7 @@ def ensure_string(value: Any) -> str:
         return f"[Unconvertible data: {type(value).__name__}]"
 
 # Initialize the logger for module-level access
-logger = setup_logger()
+logger = setup_logger(verbose=False)
 
 # Export symbols
 __all__ = [

@@ -5,7 +5,7 @@ from galileo.experiments import run_experiment
 from dotenv import load_dotenv
 from galileo import galileo_context
 
-load_dotenv("../.env")
+# load_dotenv("../.env")
 
 
 def weather_conversation_function(input_data: Dict[str, Any]) -> str:
