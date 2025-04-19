@@ -41,6 +41,7 @@ class AgentSimulation:
         category: str,
         log_to_galileo: bool = False,
         verbose: bool = False,
+        use_concurrent_execution: bool = True,
     ):
         """
         Initialize the agent simulation.
@@ -51,12 +52,14 @@ class AgentSimulation:
             category: The category of the simulation (e.g., 'tool_coordination')
             log_to_galileo: Whether to log to Galileo
             verbose: Whether to print verbose logs
+            use_concurrent_execution: Whether to execute multiple tools concurrently
         """
         self.agent_model = agent_model
         self.domain = domain
         self.category = category
         self.log_to_galileo = log_to_galileo
         self.verbose = verbose
+        self.use_concurrent_execution = use_concurrent_execution
         self.history_manager = ConversationHistoryManager()
 
         # Reinitialize the logger with the verbose flag
@@ -113,6 +116,7 @@ class AgentSimulation:
             tools=self.tools,
             tool_simulator=self.tool_simulator,
             galileo_logger=self.galileo_logger,
+            use_concurrent_execution=use_concurrent_execution,
         )
 
         # Agent
@@ -362,6 +366,7 @@ def create_experiment_runner(
     category: str,
     verbose: bool = False,
     log_to_galileo: bool = False,
+    use_concurrent_execution: bool = True,
 ):
     """
     Create a runner function for Galileo experiments.
@@ -372,6 +377,7 @@ def create_experiment_runner(
         category: The category of scenarios to run
         verbose: Whether to print verbose logs
         log_to_galileo: Whether to log to Galileo
+        use_concurrent_execution: Whether to execute multiple tools concurrently
 
     Returns:
         A function that can be passed to run_experiment
@@ -397,6 +403,7 @@ def create_experiment_runner(
             category=category,
             log_to_galileo=log_to_galileo,
             verbose=verbose,
+            use_concurrent_execution=use_concurrent_execution,
         )
 
         # Get the first message from the scenario to include as input
@@ -436,6 +443,7 @@ def run_simulation_experiments(
     verbose: bool = False,
     log_to_galileo: bool = False,
     add_timestamp: bool = True,
+    use_concurrent_execution: bool = True,
 ):
     """
     Run experiments for all combinations of models, domains, and categories.
@@ -450,6 +458,7 @@ def run_simulation_experiments(
         verbose: Whether to print verbose logs
         log_to_galileo: Whether to log to Galileo
         add_timestamp: Whether to add timestamp to experiment name
+        use_concurrent_execution: Whether to execute multiple tools concurrently
 
     Returns:
         Dictionary of experiment results
@@ -462,7 +471,8 @@ def run_simulation_experiments(
     start_info = (
         f"{Fore.CYAN}Models:{Style.RESET_ALL} {model_names}\n"
         f"{Fore.CYAN}Domains:{Style.RESET_ALL} {', '.join(domains)}\n"
-        f"{Fore.CYAN}Categories:{Style.RESET_ALL} {', '.join(categories)}"
+        f"{Fore.CYAN}Categories:{Style.RESET_ALL} {', '.join(categories)}\n"
+        f"{Fore.CYAN}Concurrent Tool Execution:{Style.RESET_ALL} {'Enabled' if use_concurrent_execution else 'Disabled'}"
     )
 
     logger.info(log_header("STARTING EXPERIMENTS", style=Fore.MAGENTA))
@@ -490,6 +500,7 @@ def run_simulation_experiments(
                     category=category,
                     verbose=verbose,
                     log_to_galileo=log_to_galileo,
+                    use_concurrent_execution=use_concurrent_execution,
                 )
 
                 # Get or create dataset

@@ -146,6 +146,7 @@ class ToolHandler:
         tools: List[Dict[str, Any]],
         tool_simulator=None,
         galileo_logger=None,
+        use_concurrent_execution: bool = True,
     ):
         """
         Initialize the tool handler.
@@ -156,12 +157,14 @@ class ToolHandler:
             tools: List of available tools
             tool_simulator: The simulator for tool execution
             galileo_logger: Optional Galileo logger for telemetry
+            use_concurrent_execution: Whether to execute multiple tools concurrently
         """
         self.domain = domain
         self.category = category
         self.tools = tools
         self.tool_simulator = tool_simulator
         self.galileo_logger = galileo_logger
+        self.use_concurrent_execution = use_concurrent_execution
 
     def _get_tool_by_name(self, tool_name: str) -> Optional[Dict[str, Any]]:
         """Get tool definition by name."""
@@ -177,7 +180,8 @@ class ToolHandler:
     ) -> List[Dict[str, Any]]:
         """
         Detect tool calls in the agent's response by looking for the string "tool":
-        and process them using the tool simulator. Uses concurrent execution when multiple tools are called.
+        and process them using the tool simulator. Uses concurrent execution when multiple tools are called
+        if use_concurrent_execution is True.
 
         Args:
             agent_response: The response from the agent LLM
@@ -251,8 +255,18 @@ class ToolHandler:
                                 )
                             )
 
-            # If we have multiple tool calls, execute them concurrently
-            if len(tool_calls) > 1:
+            # Define a function to execute a single tool
+            def execute_tool(tool_info):
+                return self.tool_simulator.simulate_tool(
+                    tool_name=tool_info["tool_name"],
+                    tool_parameters=tool_info["parameters"],
+                    tool_definition=tool_info["tool_definition"],
+                    conversation_history=conversation_history,
+                    agent_action=tool_info["agent_action"],
+                )
+
+            # If we have multiple tool calls and concurrent execution is enabled, execute them concurrently
+            if len(tool_calls) > 1 and self.use_concurrent_execution:
                 logger.info(
                     log_section(
                         "TOOLS",
@@ -260,16 +274,6 @@ class ToolHandler:
                         style=Fore.YELLOW,
                     )
                 )
-
-                # Define a function to execute a single tool
-                def execute_tool(tool_info):
-                    return self.tool_simulator.simulate_tool(
-                        tool_name=tool_info["tool_name"],
-                        tool_parameters=tool_info["parameters"],
-                        tool_definition=tool_info["tool_definition"],
-                        conversation_history=conversation_history,
-                        agent_action=tool_info["agent_action"],
-                    )
 
                 # Execute tools concurrently
                 tool_results = []
@@ -290,17 +294,24 @@ class ToolHandler:
                             )
 
                 return tool_results
-            elif len(tool_calls) == 1:
-                # For a single tool, just execute it directly
-                tool_info = tool_calls[0]
-                result = self.tool_simulator.simulate_tool(
-                    tool_name=tool_info["tool_name"],
-                    tool_parameters=tool_info["parameters"],
-                    tool_definition=tool_info["tool_definition"],
-                    conversation_history=conversation_history,
-                    agent_action=tool_info["agent_action"],
-                )
-                return [result]
+            elif len(tool_calls) > 0:
+                # For sequential execution or a single tool, process them one by one
+                tool_results = []
+
+                if len(tool_calls) > 1 and not self.use_concurrent_execution:
+                    logger.info(
+                        log_section(
+                            "TOOLS",
+                            f"Processing {len(tool_calls)} tools sequentially",
+                            style=Fore.YELLOW,
+                        )
+                    )
+
+                for tool_info in tool_calls:
+                    result = execute_tool(tool_info)
+                    tool_results.append(result)
+
+                return tool_results
 
             return []
 

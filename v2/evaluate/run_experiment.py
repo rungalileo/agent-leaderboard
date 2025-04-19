@@ -82,6 +82,13 @@ def main():
         "--output-file", type=str, help="File to save experiment results (JSON format)"
     )
 
+    parser.add_argument(
+        "--use-concurrent-execution",
+        action="store_true",
+        default=True,
+        help="Enable concurrent execution of multiple tools",
+    )
+
     args = parser.parse_args()
 
     # Parse list arguments
@@ -99,6 +106,7 @@ def main():
         print(f"  Project: {args.project}")
         print(f"  Log to Galileo: {args.log_to_galileo}")
         print(f"  Add timestamp to experiment name: {args.add_timestamp}")
+        print(f"  Concurrent tool execution: {args.use_concurrent_execution}")
         if args.dataset_name:
             print(f"  Dataset: {args.dataset_name}")
 
@@ -113,6 +121,7 @@ def main():
         verbose=args.verbose,
         log_to_galileo=args.log_to_galileo,
         add_timestamp=args.add_timestamp,
+        use_concurrent_execution=args.use_concurrent_execution,
     )
 
 

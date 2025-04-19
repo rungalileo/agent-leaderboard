@@ -1,4 +1,4 @@
-galileo 
+galileo==0.7.0
 langchain 
 langchain_openai 
 langchain_anthropic 
