@@ -33,7 +33,7 @@ Get latest update of the [leaderboard](https://huggingface.co/spaces/galileo-ai/
 
 Our evaluation process follows a systematic approach:
 
-**Model Selection**: Curated diverse set of leading language models (12 private, 5 open-source)  
+**Model Selection**: Curated diverse set of leading language models (20 private, 8 open-source)  
 **Agent Configuration**: Standardized system prompt and consistent tool access  
 **Metric Definition**: [Tool Selection Quality (TSQ)](https://docs.galileo.ai/galileo/gen-ai-studio-products/galileo-guardrail-metrics/tool-selection-quality#tool-selection-quality) as primary metric  
 **Dataset Curation**: Strategic sampling from established benchmarks  
