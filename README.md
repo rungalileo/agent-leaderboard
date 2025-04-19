@@ -9,6 +9,7 @@
 [![Leaderboard](https://img.shields.io/badge/🤗%20View-Leaderboard-blue)](https://huggingface.co/spaces/galileo-ai/agent-leaderboard)
 [![Blog](https://img.shields.io/badge/📖%20Read-Blog-green)](https://galileo.ai/blog/agent-leaderboard)
 [![Dataset](https://img.shields.io/badge/🔍%20Explore-Dataset-orange)](https://huggingface.co/datasets/galileo-ai/agent-leaderboard)
+[![Free Agent Evals](https://img.shields.io/badge/📊%20Agent-Evals-yellow)](https://www.galileo.ai/agentic-evaluations)
 
 </div>
 
