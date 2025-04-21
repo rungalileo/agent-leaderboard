@@ -300,4 +300,4 @@ if __name__ == "__main__":
         print(f"Error: {str(e)}")
         parser.print_help()
 
-# python personas.py --file-name banking.json --num-personas 20 --tools-file ../data/tools/banking.json --overwrite
+# python personas.py --file-name banking.json --num-personas 25 --tools-file ../data/tools/banking.json --overwrite

@@ -8,6 +8,8 @@ import os
 import random
 from dotenv import load_dotenv
 from tqdm import tqdm
+import concurrent.futures
+import threading
 
 load_dotenv("../.env")
 
@@ -34,7 +36,7 @@ DOMAIN:
 CATEGORIES:
 {categories_instruction}
 
-## Goal Requirements
+## User Goal Requirements
 Each scenario must have 3-5 goals that are:
 1. Specific: Clearly state what needs to be accomplished
 2. Measurable: Have clear success criteria
@@ -52,43 +54,8 @@ Each scenario object must follow this exact structure:
     "persona_index": {persona_index},
     "category": "{category}",
     "first_message": "single line message with no special chars",
-    "goals": ["goal1", "goal2"]
+    "user_goals": ["goal1", "goal2"]
 }}
-
-## STRICT JSON FORMATTING RULES:
-1. Use ONLY these ASCII characters:
-   - a-z, A-Z, 0-9
-   - Basic punctuation: . , ? ! ( ) [ ] {{ }}
-   - Quotes: " (double quotes only)
-   - Whitespace: space
-   - No tabs, no newlines within strings
-
-2. String Content Rules:
-   - NO emojis
-   - NO unicode characters
-   - NO control characters
-   - NO invisible characters
-   - NO HTML or markdown
-   - NO line breaks in strings
-   - Messages must be single-line only
-
-3. Escaping Rules:
-   - Escape double quotes with \\"
-   - Escape backslashes with \\\\
-   - Do not use single quotes
-
-4. Structure Rules:
-   - No trailing commas
-   - No comments
-   - No extra whitespace
-   - Array elements separated by single comma
-   - Property names must be double-quoted
-
-## Content Guidelines:
-1. Create scenarios which leverage multiple tools
-2. Create scenarios which have 3-5 goals that represent what the user wants to accomplish
-3. Goals should be specific, measurable user objectives (not assistant tasks)
-4. No file paths or code snippets
 
 ## Additional Requirements:
 1. The output MUST be a JSON array with EXACTLY {num_scenarios} elements
@@ -113,26 +80,33 @@ class ChatMessage(BaseModel):
 
 
 # Define available categories with descriptions
-CATEGORIES_DICT = {
+OLD_CATEGORIES_DICT = {
     "tool_coordination": "Complex orchestration requiring careful planning and parallel tool execution",
-    "out_of_scope_handling": "Nuanced requests mixing supported and unsupported features",
+    "out_of_scope_handling": "Nuanced requests mixing supported and unsupported tool execution",
     "adaptation": "Challenging situations requiring cascading dependencies, conditional logic, creative tool combinations and validations",
     "unhappy_customer": "Multi-layered problems with both technical and emotional complexity",
     "manipulative_customer": "Sophisticated attempts to exploit system limitations or policies",
 }
 
+CATEGORIES_DICT = {
+    "adaptive_tool_use": "Navigating complex scenarios with cascading tool dependencies, conditional logic, and creative tool-calling combinations.",
+    "scope_management": "Specific actions which cannot be handled by given tools, testing graceful fallback and tool rejection.",
+    "empathetic_resolution": "Combining precise tool calls with empathetic responses to address multi-faceted issues for frustrated or upset users.",
+    "extreme_scenario_recovery": "Handling rare, high-stakes scenarios with robust tool-calling strategies, stress-testing reasoning and recovery under ambiguity.",
+    "adversarial_input_mitigation": "Managing abusive language, offensive content, or wildly out-of-scope requests.",
+}
 
 class Scenario(BaseModel):
     persona_index: int
     category: Literal[
-        "tool_coordination",
-        "out_of_scope_handling",
-        "adaptation",
-        "unhappy_customer",
-        "manipulative_customer",
+        "adaptive_tool_use",
+        "scope_management",
+        "empathetic_resolution",
+        "extreme_scenario_recovery",
+        "adversarial_input_mitigation",
     ]
     first_message: str
-    goals: List[str] = Field(min_length=2, max_length=5)
+    user_goals: List[str] = Field(min_length=2, max_length=5)
 
     @field_validator("first_message")
     def validate_first_message(cls, v):
@@ -195,6 +169,17 @@ def validate_scenario(scenario: dict, category: str) -> bool:
         return False
 
 
+# Add thread-local storage for client
+thread_local = threading.local()
+
+
+def get_chat_client():
+    """Get or create a thread-local ChatAnthropic client."""
+    if not hasattr(thread_local, "chat"):
+        thread_local.chat = ChatAnthropic(model=MODEL)
+    return thread_local.chat
+
+
 def generate_scenarios(
     tools: List[dict],
     persona: dict,
@@ -204,7 +189,8 @@ def generate_scenarios(
     category: str,
 ) -> List[dict]:
     """Generate scenario definitions using Claude."""
-    chat = ChatAnthropic(model=MODEL)
+    # Get thread-local client instead of creating a new one each time
+    chat = get_chat_client()
 
     # Create the chat prompt template
     prompt_template = ChatPromptTemplate.from_messages(
@@ -269,6 +255,25 @@ def generate_scenarios(
         raise ValueError(f"Error processing response: {str(e)}")
 
 
+def process_persona(args_tuple):
+    """Process a single persona - for use with ThreadPoolExecutor."""
+    idx, persona, tools, num_scenarios, domain, category = args_tuple
+    try:
+        # Generate scenarios for the current persona
+        scenarios = generate_scenarios(
+            tools=tools,
+            persona=persona,
+            persona_index=idx,
+            num_scenarios=num_scenarios,
+            domain=domain,
+            category=category,
+        )
+        return scenarios
+    except Exception as e:
+        print(f"Error processing persona {idx}: {str(e)}")
+        return []
+
+
 def save_scenarios(
     scenarios: List[dict], domain: str, category: str, overwrite: bool = False
 ) -> str:
@@ -286,7 +291,7 @@ def save_scenarios(
 
 
 if __name__ == "__main__":
-    # python scenarios.py --domain banking --category tool_coordination --overwrite
+    # python scenarios.py --domain banking --categories tool_coordination --overwrite
     parser = argparse.ArgumentParser(
         description="Generate chat scenarios for testing AI tools using Claude"
     )
@@ -299,11 +304,10 @@ if __name__ == "__main__":
         help="Domain for the scenarios (e.g., banking, healthcare)",
     )
     parser.add_argument(
-        "--category",
+        "--categories",
         type=str,
         required=False,
-        choices=list(CATEGORIES_DICT.keys()),
-        help="Category to generate scenarios for (if not specified, all categories will be generated)",
+        help="Categories to generate scenarios for (if not specified, all categories will be generated)",
     )
 
     # Optional arguments
@@ -315,6 +319,12 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--overwrite", action="store_true", help="Overwrite existing file if it exists"
+    )
+    parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=5,
+        help="Maximum number of threads to use for concurrent generation (default: 5)",
     )
 
     args = parser.parse_args()
@@ -333,29 +343,54 @@ if __name__ == "__main__":
 
         # Determine which categories to generate
         categories_to_generate = (
-            [args.category] if args.category else list(CATEGORIES_DICT.keys())
+            args.categories.split(",")
+            if args.categories
+            else list(CATEGORIES_DICT.keys())
         )
 
         # Generate scenarios for each category
         for category in tqdm(categories_to_generate, desc="Categories"):
-            # Initialize an empty list for all scenarios in this category
+            # Check if the file already exists
+            output_dir = os.path.join("../data/scenarios", args.domain)
+            os.makedirs(output_dir, exist_ok=True)  # Ensure directory exists
+            file_path = os.path.join(output_dir, f"{category}.json")
+
+            # Skip generation if file exists and overwrite is not enabled
+            if os.path.exists(file_path) and not args.overwrite:
+                print(f"File already exists for category '{category}': {file_path}")
+                print("Skipping generation. Use --overwrite to regenerate.")
+                continue
+
             all_scenarios = []
 
-            # Generate scenarios for each persona with progress bar
-            for idx, persona in tqdm(
-                enumerate(personas), desc="Personas", total=len(personas)
-            ):
-                # Generate scenarios for the current persona
-                scenarios = generate_scenarios(
-                    tools=tools,
-                    persona=persona,
-                    persona_index=idx,
-                    num_scenarios=args.scenarios_per_persona,
-                    domain=args.domain,
-                    category=category,
-                )
-                # Append the generated scenarios to the all_scenarios list
-                all_scenarios.extend(scenarios)
+            # Prepare arguments for parallel processing
+            process_args = [
+                (idx, persona, tools, args.scenarios_per_persona, args.domain, category)
+                for idx, persona in enumerate(personas)
+            ]
+
+            # Create a thread pool and process personas in parallel
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=args.max_workers
+            ) as executor:
+                # Submit all tasks and create a map of future to persona index
+                future_to_idx = {
+                    executor.submit(process_persona, arg): arg[0]
+                    for arg in process_args
+                }
+
+                # Create a progress bar for completed tasks
+                with tqdm(total=len(personas), desc="Personas") as progress:
+                    # Process completed futures as they finish
+                    for future in concurrent.futures.as_completed(future_to_idx):
+                        idx = future_to_idx[future]
+                        try:
+                            scenarios = future.result()
+                            all_scenarios.extend(scenarios)
+                            progress.update(1)
+                        except Exception as e:
+                            print(f"Persona {idx} generated an exception: {e}")
+                            progress.update(1)
 
             # Save scenarios
             file_path = save_scenarios(
