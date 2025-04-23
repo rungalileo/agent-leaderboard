@@ -354,6 +354,7 @@ class AgentSimulation:
                 workflow_input=(
                     workflow_input if self.galileo_logger else None
                 ),  # Pass workflow_input to agent
+                previous_tool_outputs=tool_outputs,  # Pass the accumulated tool outputs
             )
 
             # Store this turn's inputs and outputs for future Galileo logging

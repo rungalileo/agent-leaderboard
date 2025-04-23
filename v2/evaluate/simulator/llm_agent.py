@@ -111,8 +111,13 @@ Response: {json.dumps(result['response'], indent=2)}
             user_message=user_message, tool_results_text=tool_results_text
         )
 
-        # Use the complete conversation history for response generation
-        messages = self.history_manager.to_langchain_messages(conversation_history)
+        # Get system prompt
+        system_prompt = self.update_agent_prompt([])
+
+        # Convert conversation history to LangChain messages, explicitly passing the system prompt
+        messages = self.history_manager.to_langchain_messages(
+            conversation_history, system_prompt
+        )
 
         # Add the prompt with tool results
         messages.append(AIMessage(content=prompt))
@@ -176,7 +181,7 @@ Response: {json.dumps(result['response'], indent=2)}
                 continue
 
             # For all other messages use standard format
-            role_label = "H" if role == "user" else "A"
+            role_label = "Human" if role == "user" else "Assistant"
             formatted_history += f"{role_label}: {content}\n\n"
 
         return formatted_history
@@ -187,15 +192,17 @@ Response: {json.dumps(result['response'], indent=2)}
         conversation_history: List[Dict[str, str]],
         tools: List[Dict[str, Any]],
         workflow_input: str = None,
+        previous_tool_outputs: List[Dict[str, Any]] = None,
     ) -> Tuple[str, List[Dict[str, Any]]]:
         """
         Run the agent LLM with the provided user message and tools.
 
         Args:
             user_message: The user message to respond to
-            conversation_history: The conversation history so far
+            conversation_history: The conversation history so far (should already include the user_message)
             tools: The tools available to the agent
             workflow_input: Optional workflow input to use for logging (for consistency)
+            previous_tool_outputs: Optional previous tool outputs to include in the prompt for tool selection
 
         Returns:
             A tuple of (final_response, tool_results)
@@ -223,10 +230,37 @@ Response: {json.dumps(result['response'], indent=2)}
         # Convert conversation history to LangChain messages
         messages = self.history_manager.to_langchain_messages(conversation_history)
 
-        # Add the current user message
-        messages.append(HumanMessage(content=user_message))
+        # Create a new system message with updated tool information for each turn
+        updated_system_message = SystemMessage(content=system_prompt)
 
-        # Format for LLM using the history manager
+        # Ensure system message is first by checking and replacing or inserting it
+        if messages and messages[0].type == "system":
+            messages[0] = updated_system_message
+        else:
+            # Insert at beginning if no system message exists
+            messages.insert(0, updated_system_message)
+
+        # Add previous tool outputs if available
+        if previous_tool_outputs and len(previous_tool_outputs) > 0:
+            # Create a formatted string with previous tool outputs
+            tool_outputs_str = "PREVIOUS TOOL OUTPUTS:\n\n"
+            for output in previous_tool_outputs:
+                tool_outputs_str += f"Tool: {output['tool_name']}\n"
+                tool_outputs_str += (
+                    f"Parameters: {json.dumps(output['parameters'], indent=2)}\n"
+                )
+                tool_outputs_str += (
+                    f"Response: {json.dumps(output['response'], indent=2)}\n\n"
+                )
+
+            # Add tool outputs information just before the last message (which should be the user message)
+            if len(messages) > 1:
+                messages.insert(-1, tool_outputs_str)
+            else:
+                # If there's only the system message, add tool outputs after it
+                messages.append(tool_outputs_str)
+
+        # Format for LLM using the history manager - now with system message included
         exact_input = self.history_manager.format_for_llm(messages)
 
         # If we received a workflow_input from the simulation, use that for consistency
@@ -235,16 +269,8 @@ Response: {json.dumps(result['response'], indent=2)}
             # Use the provided workflow input
             self.workflow_context["inputs"].append(workflow_input)
         else:
-            # Use a simplified workflow context approach - only add current turn's input
             # Generate a simple formatted version for workflow context that doesn't duplicate
             formatted_input = self.format_conversation_for_galileo(conversation_history)
-
-            # Add the current user message if not already in history
-            if (
-                conversation_history[-1].get("role") != "user"
-                or conversation_history[-1].get("content") != user_message
-            ):
-                formatted_input += f"Human: {user_message}\n\n"
 
             # For Galileo workflow context
             workflow_input = (
@@ -254,15 +280,6 @@ Response: {json.dumps(result['response'], indent=2)}
 
         # Call the agent for initial response/tool selection
         tool_selection_start_time = time.time()
-
-        # Create a new system message with updated tool information for each turn
-        updated_system_message = SystemMessage(content=system_prompt)
-        # Replace the first message (system message) with updated version
-        if messages and messages[0].type == "system":
-            messages[0] = updated_system_message
-        else:
-            # Insert at beginning if no system message exists
-            messages.insert(0, updated_system_message)
 
         # Tool binding approach - we expect structured tool calls in the response
         agent_response = self.agent_llm.invoke(messages)

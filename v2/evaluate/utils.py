@@ -78,7 +78,9 @@ class ConversationHistoryManager:
         """
         formatted = ""
         for msg in messages:
-            if msg.type == "system":
+            if isinstance(msg, str):
+                formatted += msg
+            elif msg.type == "system":
                 formatted += f"System: {msg.content}\n\n"
             elif msg.type == "human":
                 formatted += f"Human: {msg.content}\n\n"

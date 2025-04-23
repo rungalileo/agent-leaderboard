@@ -13,7 +13,7 @@ AGENT_MAX_TOKENS = 4000
 
 METRICS = [
     "tool_selection_quality",
-    "agentic_workflow_success",
+    # "agentic_workflow_success",
     "agentic_session_success",
 ]
 
@@ -27,7 +27,7 @@ FILE_PATHS = {
 GALILEO_PROJECT = "agent-leaderboard"
 
 # Simulation Configuration
-MAX_TURNS = 5  # Maximum number of turns in a conversation
+MAX_TURNS = 20  # Maximum number of turns in a conversation
 TIMEOUT_SECONDS = 60  # Timeout for each LLM call
 
 # Domain-specific system prompt additions
