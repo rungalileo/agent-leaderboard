@@ -8,6 +8,7 @@ import pandas as pd
 
 import config
 from llm_handler import LLMHandler
+from langchain_core.messages import HumanMessage
 from galileo import galileo_context
 from galileo.datasets import get_dataset
 from galileo.experiments import run_experiment
@@ -57,6 +58,8 @@ class AgentSimulation:
         self.log_to_galileo = log_to_galileo
         self.verbose = verbose
         self.use_concurrent_execution = use_concurrent_execution
+
+        # Initialize conversation history manager
         self.history_manager = ConversationHistoryManager()
 
         # Reinitialize the logger with the verbose flag
@@ -184,15 +187,33 @@ class AgentSimulation:
         persona_idx = scenario.get("persona_index", 0)
         persona = self.personas[persona_idx]
 
-        # Prepare initial conversation history
-        conversation_history = []
+        # Create system prompt with tools
+        system_prompt = self.agent.update_agent_prompt(self.tools)
+
+        # Initialize conversation history with system prompt
+        conversation_history = (
+            self.history_manager.initialize_history_with_system_prompt(system_prompt)
+        )
 
         # Get initial message from scenario
         if isinstance(scenario.get("first_message"), list):
-            conversation_history = scenario["first_message"]
+            # If first_message is a list, add all messages to history
+            for msg in scenario["first_message"]:
+                if msg.get("role") and msg.get("content"):
+                    self.history_manager.add_message(
+                        conversation_history, msg["role"], msg["content"]
+                    )
             initial_user_message = conversation_history[-1]["content"]
         else:
             initial_user_message = scenario.get("first_message", "Hello")
+            # Only add the user message if conversation_history doesn't already have it
+            if (
+                not conversation_history
+                or conversation_history[-1].get("role") != "user"
+            ):
+                self.history_manager.add_message(
+                    conversation_history, "user", initial_user_message
+                )
 
         # Simulation loop
         turn_count = 0
@@ -200,16 +221,12 @@ class AgentSimulation:
         all_tool_results = []  # This tracks all tool results across turns
         simulation_start_time = time.time()
 
+        # Store all workflow inputs and outputs for Galileo context
+        all_workflow_inputs = []
+        all_workflow_outputs = []
+
         # Initialize results container
-        results = {
-            "domain": self.domain,
-            "category": self.category,
-            "scenario_idx": scenario_idx,
-            "agent_model": self.agent_model,
-            "turns_completed": 0,
-            "turns_results": [],
-            "success": False,
-        }
+        results = {"turns_completed": 0, "success": False}
 
         # Log simulation start
         sim_start_info = (
@@ -245,8 +262,89 @@ class AgentSimulation:
                     if turn_count == 1
                     else current_user_message
                 )
+
+                # Convert conversation history to LangChain messages to ensure consistent formatting
+                langchain_messages = self.history_manager.to_langchain_messages(
+                    conversation_history
+                )
+
+                # Add current user message if not in history yet
+                if (
+                    not conversation_history
+                    or conversation_history[-1].get("role") != "user"
+                ):
+                    langchain_messages.append(
+                        HumanMessage(content=current_user_message)
+                    )
+
+                # Create cumulative workflow input with history from previous turns
+                workflow_input = "=== CONVERSATION HISTORY ===\n\n"
+
+                # Add system prompt if present
+                if (
+                    conversation_history
+                    and conversation_history[0].get("role") == "system"
+                ):
+                    system_content = conversation_history[0].get("content", "")
+                    workflow_input += f"SYSTEM: {system_content}\n\n"
+
+                # Reconstruct all previous turns from conversation history
+                current_turn = 1
+                message_index = 0
+
+                # Skip system message at beginning if present
+                if (
+                    conversation_history
+                    and conversation_history[0].get("role") == "system"
+                ):
+                    message_index = 1
+
+                # Process all complete user-assistant exchanges
+                while message_index + 1 < len(conversation_history):
+                    # Get user message
+                    if conversation_history[message_index].get("role") == "user":
+                        workflow_input += f"=== TURN {current_turn} ===\n\n"
+                        workflow_input += f"INPUT:\n\nHuman: {conversation_history[message_index].get('content')}\n\n"
+                        message_index += 1
+                    else:
+                        message_index += 1
+                        continue
+
+                    # Get assistant response
+                    if (
+                        message_index < len(conversation_history)
+                        and conversation_history[message_index].get("role")
+                        == "assistant"
+                    ):
+                        workflow_input += f"Assistant: {conversation_history[message_index].get('content')}\n\n"
+                        message_index += 1
+                        current_turn += 1
+
+                # Check if there's a user message left without a response
+                # (this should be the last message before the current turn)
+                if (
+                    message_index < len(conversation_history)
+                    and conversation_history[message_index].get("role") == "user"
+                ):
+                    workflow_input += f"=== TURN {current_turn} ===\n\n"
+                    workflow_input += f"INPUT:\n\nHuman: {conversation_history[message_index].get('content')}\n\n"
+                    current_turn += 1
+
+                # Add current turn with the input
+                # Only add if it's not already included in the conversation history
+                if (
+                    conversation_history[-1].get("role") != "user"
+                    or conversation_history[-1].get("content") != input_message
+                ):
+                    workflow_input += f"=== TURN {turn_count} ===\n\n"
+                    workflow_input += f"INPUT:\n\nHuman: {input_message}\n\n"
+
+                # Store workflow input for next turn
+                all_workflow_inputs.append(workflow_input)
+
+                # Use the constructed history for Galileo logging
                 self.galileo_logger.add_workflow_span(
-                    input=input_message,
+                    input=workflow_input,
                     name=workflow_name,
                     tags=["conversation_turn", self.domain, self.category],
                 )
@@ -261,7 +359,22 @@ class AgentSimulation:
                 user_message=current_user_message,
                 conversation_history=conversation_history,
                 tools=self.tools,
+                workflow_input=(
+                    workflow_input if self.galileo_logger else None
+                ),  # Pass workflow_input to agent
             )
+
+            # Store this turn's inputs and outputs for future Galileo logging
+            if (
+                hasattr(self.agent, "workflow_context")
+                and self.agent.workflow_context["inputs"]
+            ):
+                # Get the most recent input/output from the agent's workflow context
+                all_workflow_inputs.append(self.agent.workflow_context["inputs"][-1])
+                if self.agent.workflow_context["outputs"]:
+                    all_workflow_outputs.append(
+                        self.agent.workflow_context["outputs"][-1]
+                    )
 
             # Calculate turn duration
             turn_duration_sec = time.time() - turn_start_time
@@ -304,7 +417,7 @@ class AgentSimulation:
                 "assistant_response": final_response,
                 "processing_time_ms": int(turn_duration_sec * 1000),
             }
-            results["turns_results"].append(turn_result)
+            # results["turns_results"].append(turn_result)
             results["turns_completed"] += 1
 
             # Simulate user response - using refactored user simulator
@@ -333,7 +446,7 @@ class AgentSimulation:
             # Conclude the workflow span for this turn
             if self.galileo_logger:
                 self.galileo_logger.conclude(
-                    output=ensure_string(final_response),
+                    output=f"Assistant: {ensure_string(final_response)}",
                     duration_ns=turn_duration_ns,
                 )
 
@@ -361,18 +474,18 @@ class AgentSimulation:
         logger.info(log_section("SUMMARY", sim_end_info, style=Fore.BLUE))
 
         # Store conversation summary data
-        results["conversation_history"] = [
-            {"role": msg["role"], "content": msg["content"]}
-            for msg in conversation_history
-        ]
+        # results["conversation_history"] = [
+        #     {"role": msg["role"], "content": msg["content"]}
+        #     for msg in conversation_history[-1:]
+        # ]
         results["success"] = True if results["turns_completed"] > 0 else False
-        results["conversation_summary"] = (
-            f"Completed {turn_count} turns in {self.domain}/{self.category} scenario"
-        )
+        # results["conversation_summary"] = (
+        #     f"Completed {turn_count} turns in {self.domain}/{self.category} scenario"
+        # )
         results["total_duration_ms"] = int(total_duration * 1000)
 
         # Store tool results in debug_data for reference, but not in main results
-        results["debug_data"] = {"all_tool_results": all_tool_results}
+        # results["debug_data"] = {"all_tool_results": all_tool_results}
 
         return results
 

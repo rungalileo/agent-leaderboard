@@ -51,6 +51,10 @@ else:
 class ConversationHistoryManager:
     """Manages conversation history and related operations for agent simulations."""
 
+    def __init__(self, system_prompt: str = None):
+        """Initialize the conversation history manager."""
+        self.system_prompt = system_prompt
+
     @staticmethod
     def format_for_display(history: List[Dict[str, str]]) -> str:
         """Format conversation history for display or logging."""
@@ -59,6 +63,27 @@ class ConversationHistoryManager:
             role = msg.get("role", "")
             content = msg.get("content", "")
             formatted += f"{role.upper()}: {content}\n\n"
+        return formatted
+
+    @staticmethod
+    def format_for_llm(messages: List[Any]) -> str:
+        """
+        Format messages in the exact format they would be sent to an LLM.
+
+        Args:
+            messages: List of LangChain message objects (SystemMessage, HumanMessage, AIMessage)
+
+        Returns:
+            A formatted string representing the messages as they would be sent to an LLM
+        """
+        formatted = ""
+        for msg in messages:
+            if msg.type == "system":
+                formatted += f"System: {msg.content}\n\n"
+            elif msg.type == "human":
+                formatted += f"Human: {msg.content}\n\n"
+            elif msg.type == "ai":
+                formatted += f"Assistant: {msg.content}\n\n"
         return formatted
 
     @staticmethod
@@ -79,16 +104,17 @@ class ConversationHistoryManager:
                 return msg["content"]
         return default_message
 
-    @staticmethod
     def to_langchain_messages(
-        history: List[Dict[str, str]], system_prompt: str = None
+        self, history: List[Dict[str, str]], system_prompt: str = None
     ) -> List[Any]:
-        """Convert conversation history to LangChain message format."""
+        """Convert conversation history to LangChain message format with system prompt."""
         messages = []
 
-        # Add system prompt if provided
+        # Add system prompt if provided, use instance prompt as fallback
         if system_prompt:
             messages.append(SystemMessage(content=system_prompt))
+        elif self.system_prompt:
+            messages.append(SystemMessage(content=self.system_prompt))
 
         # Add conversation history
         for msg in history:
@@ -99,28 +125,17 @@ class ConversationHistoryManager:
 
         return messages
 
-    @staticmethod
-    def filter_for_final_response(history: List[Dict[str, str]]) -> List[Any]:
-        """Filter history for generating a final response, excluding the last assistant message if applicable."""
-        if len(history) >= 2 and history[-2]["role"] == "assistant":
-            filtered_history = [
-                (
-                    HumanMessage(content=msg["content"])
-                    if msg["role"] == "user"
-                    else AIMessage(content=msg["content"])
-                )
-                for msg in history[:-2]
-            ]
-        else:
-            filtered_history = [
-                (
-                    HumanMessage(content=msg["content"])
-                    if msg["role"] == "user"
-                    else AIMessage(content=msg["content"])
-                )
-                for msg in history
-            ]
-        return filtered_history
+    def initialize_history_with_system_prompt(
+        self, system_prompt: str = None
+    ) -> List[Dict[str, str]]:
+        """Initialize conversation history with the system prompt as the first message."""
+        prompt = system_prompt if system_prompt else self.system_prompt
+        if not prompt:
+            return []
+
+        history = []
+        self.add_message(history, "system", prompt)
+        return history
 
 
 # Set up logging

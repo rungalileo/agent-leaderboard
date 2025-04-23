@@ -24,10 +24,10 @@ FILE_PATHS = {
 }
 
 # Galileo Configuration
-GALILEO_PROJECT = "agent-leaderboard-v2"
+GALILEO_PROJECT = "agent-leaderboard"
 
 # Simulation Configuration
-MAX_TURNS = 30  # Maximum number of turns in a conversation
+MAX_TURNS = 5  # Maximum number of turns in a conversation
 TIMEOUT_SECONDS = 60  # Timeout for each LLM call
 
 # Domain-specific system prompt additions
@@ -96,7 +96,7 @@ Respond as this user based on their persona and scenario goals.
 BEHAVIOR GUIDELINES:
 1. Do not hesitate in giving the required information. Provide all the information that is required to complete the task.
 2. If all tasks are completed successfully, end with "CONVERSATION_COMPLETE" and a goodbye message
-3. If agent indicates a request is unsupported: don't repeat it, move to another goal or end with "CONVERSATION_COMPLETE"
+3. If agent indicates a request is unsupported: don't repeat it, move to another goal. If you exhausted all goals, end with "CONVERSATION_COMPLETE"
 4. Keep responses natural and realistic for your persona
 5. Be efficient and direct in your requests - provide complete information upfront when possible
 6. Avoid unnecessary back-and-forth by clearly stating all relevant details"""
@@ -143,8 +143,8 @@ IMPORTANT INSTRUCTIONS:
 7. Use multiple tools in sequence when needed to complete a request
 8. Ask clarifying questions for ambiguous requests before taking action
 9. For vague requests like "transfer money," ask for all specifics first
-10. For unsupported requests, respond with "UNSUPPORTED: " and brief explanation
-11. For needed clarification, respond with "CLARIFY: " and your question
+10. For unsupported requests, respond with a brief explanation
+11. For needed clarification, respond with your question
 12. Be efficient and direct - complete tasks in the minimum number of turns
 
 YOUR WORKFLOW:
@@ -171,5 +171,4 @@ Your response should:
 3. Be helpful, clear, and concise
 4. IMPORTANT: DO NOT include any JSON tool call format in your response
 5. IMPORTANT: DO NOT prefix your response with phrases like "Based on the tool results"
-
-Your response:"""
+"""
