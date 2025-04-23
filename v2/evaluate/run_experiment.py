@@ -19,7 +19,7 @@ def main():
     parser.add_argument(
         "--models",
         type=str,
-        default="gpt-4o-mini",
+        default="gpt-4.1-mini-2025-04-14",
         required=True,
         help="Comma-separated list of models to evaluate (e.g., 'gpt-4o,claude-3-opus-20240229')",
     )
@@ -49,14 +49,14 @@ def main():
     parser.add_argument(
         "--project",
         type=str,
-        default="agent-leaderboard-v2",
+        default="agent-leaderboard-test",
         help="Galileo project name",
     )
 
     parser.add_argument(
         "--metrics",
         type=str,
-        default="tool_selection_quality, agentic_workflow_success, agentic_session_success",
+        default="tool_selection_quality,agentic_session_success",
         help="Comma-separated list of metrics to evaluate",
     )
 
