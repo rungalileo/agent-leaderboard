@@ -157,6 +157,17 @@ YOUR WORKFLOW:
 Solve user requests by gathering necessary information and using appropriate tools as soon as all required information is provided.
 """
 
+# Add a new system prompt for agent when using tool binding
+AGENT_SYSTEM_PROMPT_WITHOUT_TOOLS = """You are an AI assistant helping a user accomplish a task.
+
+You have access to a set of tools that you can use to help the user.
+These tools will be automatically detected from your environment.
+
+{domain_instructions}
+
+Be helpful, concise, and friendly in your responses.
+"""
+
 FINAL_RESPONSE_PROMPT = """Based on the conversation history and the results of the tools you used, 
 please provide a helpful response to the user's request.
 

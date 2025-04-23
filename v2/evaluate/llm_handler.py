@@ -1,6 +1,6 @@
 import os
 
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from langchain_core.language_models import BaseChatModel
 from langchain_anthropic import ChatAnthropic
 from langchain_cohere import ChatCohere
@@ -149,6 +149,7 @@ class LLMHandler:
         temperature: float = 0.0,
         max_tokens: Optional[int] = 4000,
         api_key: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
         **kwargs,
     ) -> BaseChatModel:
         """
@@ -160,6 +161,7 @@ class LLMHandler:
             temperature: Temperature parameter for generation (0.0 to 1.0)
             max_tokens: Maximum tokens to generate
             api_key: Optional API key (if not set in environment variables)
+            tools: Optional list of tools to bind to the LLM
             **kwargs: Additional arguments to pass to the model constructor
 
         Returns:
@@ -191,35 +193,34 @@ class LLMHandler:
         # Remove None values
         model_params = {k: v for k, v in model_params.items() if v is not None}
 
+        # Create the base LLM
+        llm = None
+
         if provider == "anthropic":
-            return ChatAnthropic(model_name=model_name, **model_params)
-
+            llm = ChatAnthropic(model_name=model_name, **model_params)
         elif provider == "mistral":
-            return ChatMistralAI(model_name=model_name, **model_params)
-
+            llm = ChatMistralAI(model_name=model_name, **model_params)
         elif provider == "google":
-            return ChatGoogleGenerativeAI(model=model_name, **model_params)
-
+            llm = ChatGoogleGenerativeAI(model=model_name, **model_params)
         elif provider == "together":
-            return ChatTogether(model=model_name, **model_params)
-
+            llm = ChatTogether(model=model_name, **model_params)
         elif provider == "openai":
-            return ChatOpenAI(model=model_name, **model_params)
-
+            llm = ChatOpenAI(model=model_name, **model_params)
         elif provider == "fireworks":
-            return ChatFireworks(model=model_name, **model_params)
-
+            llm = ChatFireworks(model=model_name, **model_params)
         elif provider == "bedrock":
-            return ChatBedrock(model_id=model_name, **model_params)
-
+            llm = ChatBedrock(model_id=model_name, **model_params)
         elif provider == "cohere":
-            return ChatCohere(model=model_name, **model_params)
-
+            llm = ChatCohere(model=model_name, **model_params)
         elif provider == "nvidia":
-            return ChatNVIDIA(model=model_name, **model_params)
-
+            llm = ChatNVIDIA(model=model_name, **model_params)
         elif provider == "writer":
-            return ChatWriter(model=model_name, **model_params)
-
+            llm = ChatWriter(model=model_name, **model_params)
         elif provider == "deepseek":
-            return ChatDeepSeek(model=model_name, **model_params)
+            llm = ChatDeepSeek(model=model_name, **model_params)
+
+        # Bind tools if provided
+        if tools and llm:
+            llm = llm.bind_tools(tools)
+
+        return llm

@@ -1,11 +1,11 @@
 import time
 import json
-from typing import Dict, List, Any, Tuple, Optional
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage
+from typing import Dict, List, Any, Tuple
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 import sys, os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils import logger, log_section, Fore
+from utils import logger
 import config
 
 
@@ -16,7 +16,7 @@ class LLMAgent:
         self,
         model_name: str,
         agent_llm=None,
-        tool_handler=None,
+        tool_simulator=None,
         domain: str = "",
         category: str = "",
         galileo_logger=None,
@@ -29,7 +29,7 @@ class LLMAgent:
         Args:
             model_name: The model name for the agent
             agent_llm: The LLM instance to use for this agent
-            tool_handler: Tool handler for detecting and processing tool calls
+            tool_simulator: Tool simulator for executing tool calls
             domain: The domain for the agent
             category: The category of tasks
             galileo_logger: Optional Galileo logger for telemetry
@@ -43,7 +43,7 @@ class LLMAgent:
         self.verbose = verbose
         self.history_manager = history_manager
         self.agent_llm = agent_llm
-        self.tool_handler = tool_handler
+        self.tool_simulator = tool_simulator
 
         # Store workflow context for Galileo logging
         self.workflow_context = {"inputs": [], "outputs": []}
@@ -53,36 +53,14 @@ class LLMAgent:
 
     def update_agent_prompt(self, tools: List[Dict[str, Any]]) -> str:
         """
-        Create a system prompt for the agent that instructs it to use tools.
+        Create a simplified system prompt for the agent when using tool binding.
 
         Args:
-            tools: List of tools available to the agent
+            tools: List of tools available to the agent (not used in prompt when using tool binding)
 
         Returns:
-            A system prompt instructing the agent to use tools
+            A system prompt for the agent
         """
-        tool_descriptions = []
-        for tool in tools:
-            description = tool.get("description", "")
-            name = tool.get("title", "")
-            parameters = tool.get("properties", {})
-            required = tool.get("required", [])
-
-            param_descriptions = []
-            for param_name, param_info in parameters.items():
-                param_desc = f"- {param_name}: {param_info.get('description', '')}"
-                if param_name in required:
-                    param_desc += " (REQUIRED)"
-                param_descriptions.append(param_desc)
-
-            tool_description = f"""
-Function: {name}
-Description: {description}
-Parameters:
-{chr(10).join(param_descriptions)}
-"""
-            tool_descriptions.append(tool_description)
-
         # Get domain-specific instructions
         domain_instructions = ""
         if self.domain.lower() in config.DOMAIN_SPECIFIC_INSTRUCTIONS:
@@ -90,13 +68,10 @@ Parameters:
                 self.domain.lower()
             ]
 
-        # Return formatted prompt from config with schema added
-        prompt = config.AGENT_SYSTEM_PROMPT.format(
-            tool_descriptions=chr(10).join(tool_descriptions),
-            domain_instructions=domain_instructions,
+        # Return a simplified prompt without tool descriptions since we're using tool binding
+        return config.AGENT_SYSTEM_PROMPT_WITHOUT_TOOLS.format(
+            domain_instructions=domain_instructions
         )
-
-        return prompt
 
     def generate_final_response(
         self,
@@ -166,7 +141,6 @@ Response: {json.dumps(result['response'], indent=2)}
                 model=self.model_name,
                 duration_ns=int((end_time - start_time) * 1_000_000_000),
                 name="agent_final_response",
-                tags=["agent", "final_response"],
             )
 
         return response.content
@@ -229,7 +203,11 @@ Response: {json.dumps(result['response'], indent=2)}
         start_time = time.time()
         self.current_turn += 1
 
-        # Create system prompt with tools
+        # Make sure the tool simulator has the latest tools
+        if self.tool_simulator:
+            self.tool_simulator.set_tools(tools)
+
+        # Create system prompt
         system_prompt = self.update_agent_prompt(tools)
 
         # Initialize history with system prompt if it's not there already
@@ -286,33 +264,70 @@ Response: {json.dumps(result['response'], indent=2)}
             # Insert at beginning if no system message exists
             messages.insert(0, updated_system_message)
 
-        agent_response = self.agent_llm.invoke(messages).content
+        # Tool binding approach - we expect structured tool calls in the response
+        agent_response = self.agent_llm.invoke(messages)
         tool_selection_end_time = time.time()
         tool_selection_duration_ns = int(
             (tool_selection_end_time - tool_selection_start_time) * 1_000_000_000
         )
 
-        # Update workflow context
-        self.workflow_context["outputs"].append(agent_response)
+        # Update workflow context with the raw response content
+        self.workflow_context["outputs"].append(agent_response.content)
+
+        # Process tool calls from the response using the tool simulator's method
+        if self.tool_simulator:
+            tool_calls = self.tool_simulator.process_tool_call_response(agent_response)
+        else:
+            # Fallback to processing locally if no tool simulator is provided
+            tool_calls = []
+            if hasattr(agent_response, "tool_calls") and agent_response.tool_calls:
+                for tool_call in agent_response.tool_calls:
+                    tool_name = tool_call.get("name")
+                    args = tool_call.get("args", {})
+                    if tool_name:
+                        tool_calls.append(
+                            {
+                                "tool_name": tool_name,
+                                "parameters": args,
+                                "tool_call_id": tool_call.get("id"),
+                            }
+                        )
 
         # Log the tool selection LLM span if Galileo is enabled
         if self.galileo_logger:
-            # Log exactly what was sent to the LLM
+            # Log exactly what was sent to the LLM, and include tool calls in output
+            output_with_tool_calls = {
+                "content": (
+                    agent_response.content
+                    if hasattr(agent_response, "content")
+                    else str(agent_response)
+                ),
+                "tool_calls": tool_calls,
+            }
+
+            span_name = "tool_selection" if tool_calls else "agent_response"
             self.galileo_logger.add_llm_span(
-                input=exact_input,  # Use the exact input sent to the LLM instead of workflow_input
-                output=agent_response,
+                input=exact_input,
+                output=json.dumps(output_with_tool_calls),
                 model=self.model_name,
                 tools=tools,
                 duration_ns=tool_selection_duration_ns,
-                name="tool_selection",
-                tags=["tool_selection", self.domain, self.category],
+                name=span_name,
             )
 
-        # Detect and process any tool calls in the agent's response
-        tool_results = self.tool_handler.detect_and_process_tool_calls(
-            agent_response=agent_response,
-            conversation_history=conversation_history,
-        )
+        # Simulate tools using the tool simulator's parallel execution method
+        tool_results = []
+        if tool_calls and self.tool_simulator:
+            # Use the tool simulator to run all tools, potentially in parallel
+            tool_results = self.tool_simulator.simulate_tools(
+                tool_calls=tool_calls,
+                conversation_history=conversation_history,
+                agent_action=(
+                    agent_response.content
+                    if hasattr(agent_response, "content")
+                    else str(agent_response)
+                ),
+            )
 
         # Only generate final response if tools were used, otherwise use raw agent response
         if tool_results:
@@ -328,6 +343,9 @@ Response: {json.dumps(result['response'], indent=2)}
                 (response_end_time - response_start_time) * 1_000_000_000
             )
         else:
-            final_response = agent_response
+            if hasattr(agent_response, "content"):
+                final_response = agent_response.content
+            else:
+                final_response = str(agent_response)
 
         return final_response, tool_results

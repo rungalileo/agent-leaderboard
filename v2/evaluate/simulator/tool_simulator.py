@@ -20,6 +20,7 @@ class ToolSimulator:
         category: str,
         simulator_llm,
         galileo_logger=None,
+        verbose: bool = False,
     ):
         """
         Initialize the tool simulator.
@@ -29,11 +30,100 @@ class ToolSimulator:
             category: The category of tools
             simulator_llm: The LLM instance to use for simulation
             galileo_logger: Optional Galileo logger for telemetry
+            verbose: Whether to print verbose logs
         """
         self.domain = domain
         self.category = category
         self.simulator_llm = simulator_llm
         self.galileo_logger = galileo_logger
+        self.verbose = verbose
+        self.tools = []
+
+    def set_tools(self, tools: List[Dict[str, Any]]):
+        """
+        Set the available tools for the simulator.
+
+        Args:
+            tools: List of available tools
+        """
+        self.tools = tools
+
+    def process_tool_call_response(self, response) -> List[Dict[str, Any]]:
+        """
+        Process tool call responses when using tool binding.
+
+        Args:
+            response: Response from LLM with tool calls
+
+        Returns:
+            List of tool call information for simulation
+        """
+        tool_calls = []
+
+        # Check if response has tool_calls attribute
+        if hasattr(response, "tool_calls") and response.tool_calls:
+            for tool_call in response.tool_calls:
+                # Extract information from the tool call
+                tool_name = tool_call.get("name")
+                args = tool_call.get("args", {})
+
+                if tool_name:
+                    tool_calls.append(
+                        {
+                            "tool_name": tool_name,
+                            "parameters": args,
+                            "tool_call_id": tool_call.get("id"),
+                        }
+                    )
+
+        # If we have verbose mode, print the content and tool calls
+        if self.verbose and hasattr(response, "content"):
+            content_info = f"{Fore.CYAN}Content:{Style.RESET_ALL} {response.content}"
+            tools_info = f"{Fore.CYAN}Tool Calls:{Style.RESET_ALL} " + json.dumps(
+                [t["tool_name"] for t in tool_calls], indent=2
+            )
+            logger.info(log_section("TOOL SELECTION", content_info, style=Fore.CYAN))
+            logger.info(log_section("TOOL CALLS", tools_info, style=Fore.CYAN))
+
+        # Handle nested content issue (problem #4)
+        if hasattr(response, "content") and isinstance(response.content, str):
+            try:
+                # Check if content contains nested JSON structure
+                parsed_content = json.loads(response.content)
+                if isinstance(parsed_content, dict) and "content" in parsed_content:
+                    # Extract the actual content from the nested structure
+                    if "tool_calls" in parsed_content:
+                        # If we also find tool_calls in parsed content, use those
+                        for tool_call in parsed_content.get("tool_calls", []):
+                            tool_name = tool_call.get("tool_name")
+                            parameters = tool_call.get("parameters", {})
+                            tool_call_id = tool_call.get("tool_call_id")
+
+                            if tool_name:
+                                # Check if this tool_call already exists to avoid duplicates
+                                duplicate = False
+                                for existing_call in tool_calls:
+                                    if (
+                                        existing_call["tool_name"] == tool_name
+                                        and existing_call["parameters"] == parameters
+                                    ):
+                                        duplicate = True
+                                        break
+
+                                if not duplicate:
+                                    tool_calls.append(
+                                        {
+                                            "tool_name": tool_name,
+                                            "parameters": parameters,
+                                            "tool_call_id": tool_call_id
+                                            or f"call_{int(time.time() * 1000)}",
+                                        }
+                                    )
+            except (json.JSONDecodeError, TypeError):
+                # Content is not valid JSON or not a string - ignore and continue
+                pass
+
+        return tool_calls
 
     def simulate_tool(
         self,
@@ -135,186 +225,93 @@ class ToolSimulator:
             "duration_ns": tool_duration_ns,
         }
 
+    def _simulate_tool_task(self, tool_call, tools, conversation_history, agent_action):
+        """Helper function for parallel execution of tools"""
+        tool_name = tool_call["tool_name"]
+        parameters = tool_call["parameters"]
 
-class ToolHandler:
-    """Handles tool detection, selection, and execution."""
-
-    def __init__(
-        self,
-        domain: str,
-        category: str,
-        tools: List[Dict[str, Any]],
-        tool_simulator=None,
-        galileo_logger=None,
-        use_concurrent_execution: bool = True,
-    ):
-        """
-        Initialize the tool handler.
-
-        Args:
-            domain: The domain for the tools
-            category: The category of tools
-            tools: List of available tools
-            tool_simulator: The simulator for tool execution
-            galileo_logger: Optional Galileo logger for telemetry
-            use_concurrent_execution: Whether to execute multiple tools concurrently
-        """
-        self.domain = domain
-        self.category = category
-        self.tools = tools
-        self.tool_simulator = tool_simulator
-        self.galileo_logger = galileo_logger
-        self.use_concurrent_execution = use_concurrent_execution
-
-    def _get_tool_by_name(self, tool_name: str) -> Optional[Dict[str, Any]]:
-        """Get tool definition by name."""
-        for tool in self.tools:
+        # Find the tool definition
+        tool_definition = None
+        for tool in tools:
             if tool.get("title") == tool_name:
-                return tool
+                tool_definition = tool
+                break
+
+        if tool_definition:
+            return self.simulate_tool(
+                tool_name=tool_name,
+                tool_parameters=parameters,
+                tool_definition=tool_definition,
+                conversation_history=conversation_history,
+                agent_action=agent_action,
+            )
         return None
 
-    def detect_and_process_tool_calls(
+    def simulate_tools(
         self,
-        agent_response: str,
-        conversation_history: List[Dict[str, str]] = None,
+        tool_calls: List[Dict[str, Any]],
+        conversation_history: List[Dict[str, str]],
+        agent_action: str = None,
     ) -> List[Dict[str, Any]]:
         """
-        Detect tool calls in the agent's response by looking for the string "tool":
-        and process them using the tool simulator. Uses concurrent execution when multiple tools are called
-        if use_concurrent_execution is True.
+        Simulate multiple tool executions in parallel.
 
         Args:
-            agent_response: The response from the agent LLM
-            conversation_history: The conversation history so far
+            tool_calls: List of tool calls to simulate
+            conversation_history: The conversation history
+            agent_action: The agent action that led to these tool calls
 
         Returns:
-            List of tool results
+            List of tool execution results
         """
-        tool_calls = []
-
-        try:
-            # Check if the response contains a tool call
-            if '"tool":' in agent_response or '"name":' in agent_response:
-                # Try to extract JSON from the response
-                json_pattern = r'\[?\s*{.*"(?:tool|name)":.+}\s*\]?'
-                json_matches = re.findall(json_pattern, agent_response, re.DOTALL)
-
-                if json_matches:
-                    for json_str in json_matches:
-                        # Make sure we have valid JSON
-                        if not (json_str.startswith("[") and json_str.endswith("]")):
-                            if not (
-                                json_str.startswith("{") and json_str.endswith("}")
-                            ):
-                                json_str = f"{json_str}"
-
-                        try:
-                            # Parse the JSON
-                            parsed_tool_calls = json.loads(json_str)
-
-                            # Handle both single tool call and array of tool calls
-                            if isinstance(parsed_tool_calls, dict):
-                                parsed_tool_calls = [parsed_tool_calls]
-
-                            for tool_call in parsed_tool_calls:
-                                tool_name = tool_call.get("tool") or tool_call.get(
-                                    "name"
-                                )
-                                parameters = tool_call.get("parameters", {})
-
-                                if tool_name:
-                                    # Get the tool definition
-                                    tool_definition = self._get_tool_by_name(tool_name)
-
-                                    if tool_definition:
-                                        # Extract the agent's action from the response
-                                        # This is the text before the tool call JSON
-                                        agent_action = agent_response.split(json_str)[
-                                            0
-                                        ].strip()
-
-                                        # Store tool call info for concurrent execution
-                                        tool_calls.append(
-                                            {
-                                                "tool_name": tool_name,
-                                                "parameters": parameters,
-                                                "tool_definition": tool_definition,
-                                                "agent_action": agent_action,
-                                            }
-                                        )
-                                    else:
-                                        logger.warning(
-                                            f"Tool '{tool_name}' not found in available tools"
-                                        )
-                        except json.JSONDecodeError as e:
-                            logger.warning(
-                                log_section(
-                                    "ERROR",
-                                    f"Failed to parse tool call JSON: {e}\n\nProblematic JSON string: {json_str}",
-                                    style=Fore.RED,
-                                )
-                            )
-
-            # Define a function to execute a single tool
-            def execute_tool(tool_info):
-                return self.tool_simulator.simulate_tool(
-                    tool_name=tool_info["tool_name"],
-                    tool_parameters=tool_info["parameters"],
-                    tool_definition=tool_info["tool_definition"],
-                    conversation_history=conversation_history,
-                    agent_action=tool_info["agent_action"],
-                )
-
-            # If we have multiple tool calls and concurrent execution is enabled, execute them concurrently
-            if len(tool_calls) > 1 and self.use_concurrent_execution:
-                logger.info(
-                    log_section(
-                        "TOOLS",
-                        f"Processing {len(tool_calls)} tools concurrently",
-                        style=Fore.YELLOW,
-                    )
-                )
-
-                # Execute tools concurrently
-                tool_results = []
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future_to_tool = {
-                        executor.submit(execute_tool, tool_info): tool_info
-                        for tool_info in tool_calls
-                    }
-
-                    for future in concurrent.futures.as_completed(future_to_tool):
-                        try:
-                            result = future.result()
-                            tool_results.append(result)
-                        except Exception as exc:
-                            tool_info = future_to_tool[future]
-                            logger.error(
-                                f"Tool execution failed for {tool_info['tool_name']}: {exc}"
-                            )
-
-                return tool_results
-            elif len(tool_calls) > 0:
-                # For sequential execution or a single tool, process them one by one
-                tool_results = []
-
-                if len(tool_calls) > 1 and not self.use_concurrent_execution:
-                    logger.info(
-                        log_section(
-                            "TOOLS",
-                            f"Processing {len(tool_calls)} tools sequentially",
-                            style=Fore.YELLOW,
-                        )
-                    )
-
-                for tool_info in tool_calls:
-                    result = execute_tool(tool_info)
-                    tool_results.append(result)
-
-                return tool_results
-
+        if not tool_calls or not self.tools:
             return []
 
-        except Exception as e:
-            logger.error(f"Error detecting tool calls: {str(e)}")
-            return []
+        # Initialize results list
+        tool_results = []
+
+        # Always use concurrent execution for multiple tool calls
+        if len(tool_calls) > 1:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                # Create tasks for each tool call
+                future_to_tool = {
+                    executor.submit(
+                        self._simulate_tool_task,
+                        tool_call,
+                        self.tools,
+                        conversation_history,
+                        agent_action,
+                    ): tool_call
+                    for tool_call in tool_calls
+                }
+
+                # Collect results as they complete
+                for future in concurrent.futures.as_completed(future_to_tool):
+                    result = future.result()
+                    if result:
+                        tool_results.append(result)
+        else:
+            # For single tool call, use direct execution
+            for tool_call in tool_calls:
+                tool_name = tool_call["tool_name"]
+                parameters = tool_call["parameters"]
+
+                # Find the tool definition
+                tool_definition = None
+                for tool in self.tools:
+                    if tool.get("title") == tool_name:
+                        tool_definition = tool
+                        break
+
+                if tool_definition:
+                    # Simulate the tool
+                    tool_result = self.simulate_tool(
+                        tool_name=tool_name,
+                        tool_parameters=parameters,
+                        tool_definition=tool_definition,
+                        conversation_history=conversation_history,
+                        agent_action=agent_action,
+                    )
+                    tool_results.append(tool_result)
+
+        return tool_results

@@ -22,7 +22,7 @@ from utils import (
 )
 
 from simulator.llm_agent import LLMAgent
-from simulator.tool_simulator import ToolSimulator, ToolHandler
+from simulator.tool_simulator import ToolSimulator
 from simulator.user_simulator import UserSimulator
 
 load_dotenv("../.env")
@@ -39,7 +39,6 @@ class AgentSimulation:
         category: str,
         log_to_galileo: bool = False,
         verbose: bool = False,
-        use_concurrent_execution: bool = True,
     ):
         """
         Initialize the agent simulation.
@@ -50,14 +49,12 @@ class AgentSimulation:
             category: The category of the simulation (e.g., 'tool_coordination')
             log_to_galileo: Whether to log to Galileo
             verbose: Whether to print verbose logs
-            use_concurrent_execution: Whether to execute multiple tools concurrently
         """
         self.agent_model = agent_model
         self.domain = domain
         self.category = category
         self.log_to_galileo = log_to_galileo
         self.verbose = verbose
-        self.use_concurrent_execution = use_concurrent_execution
 
         # Initialize conversation history manager
         self.history_manager = ConversationHistoryManager()
@@ -69,11 +66,17 @@ class AgentSimulation:
         # Initialize LLM handler
         self.llm_handler = LLMHandler()
 
-        # Initialize LLMs
+        # Load data
+        self.tools = self._load_tools()
+        self.personas = self._load_personas()
+        self.scenarios = self._load_scenarios()
+
+        # Initialize LLMs with tools always bound
         self.agent_llm = self.llm_handler.get_llm(
             model_name=agent_model,
             temperature=config.AGENT_TEMPERATURE,
             max_tokens=config.AGENT_MAX_TOKENS,
+            tools=self.tools,  # Always bind tools to the LLM
         )
 
         self.simulator_llm = self.llm_handler.get_llm(
@@ -81,11 +84,6 @@ class AgentSimulation:
             temperature=config.SIMULATOR_TEMPERATURE,
             max_tokens=config.SIMULATOR_MAX_TOKENS,
         )
-
-        # Load data
-        self.tools = self._load_tools()
-        self.personas = self._load_personas()
-        self.scenarios = self._load_scenarios()
 
         # Initialize Galileo logger
         if log_to_galileo:
@@ -107,23 +105,17 @@ class AgentSimulation:
             category=category,
             simulator_llm=self.simulator_llm,
             galileo_logger=self.galileo_logger,
+            verbose=verbose,
         )
 
-        # Tool handler
-        self.tool_handler = ToolHandler(
-            domain=domain,
-            category=category,
-            tools=self.tools,
-            tool_simulator=self.tool_simulator,
-            galileo_logger=self.galileo_logger,
-            use_concurrent_execution=use_concurrent_execution,
-        )
+        # Initialize tool simulator with tools
+        self.tool_simulator.set_tools(self.tools)
 
         # Agent
         self.agent = LLMAgent(
             model_name=agent_model,
             agent_llm=self.agent_llm,
-            tool_handler=self.tool_handler,
+            tool_simulator=self.tool_simulator,
             domain=domain,
             category=category,
             galileo_logger=self.galileo_logger,
@@ -144,7 +136,7 @@ class AgentSimulation:
             f"{Fore.CYAN}Domain:{Style.RESET_ALL} {self.domain}\n"
             f"{Fore.CYAN}Category:{Style.RESET_ALL} {self.category}\n"
             f"{Fore.CYAN}Max Turns:{Style.RESET_ALL} {config.MAX_TURNS}\n"
-            f"{Fore.CYAN}Concurrent Execution:{Style.RESET_ALL} {self.use_concurrent_execution}"
+            f"{Fore.CYAN}Parallel Tool Execution:{Style.RESET_ALL} Enabled"
         )
 
         logger.info(
@@ -473,19 +465,8 @@ class AgentSimulation:
         logger.info(log_header("SIMULATION COMPLETE", style=Fore.BLUE))
         logger.info(log_section("SUMMARY", sim_end_info, style=Fore.BLUE))
 
-        # Store conversation summary data
-        # results["conversation_history"] = [
-        #     {"role": msg["role"], "content": msg["content"]}
-        #     for msg in conversation_history[-1:]
-        # ]
         results["success"] = True if results["turns_completed"] > 0 else False
-        # results["conversation_summary"] = (
-        #     f"Completed {turn_count} turns in {self.domain}/{self.category} scenario"
-        # )
         results["total_duration_ms"] = int(total_duration * 1000)
-
-        # Store tool results in debug_data for reference, but not in main results
-        # results["debug_data"] = {"all_tool_results": all_tool_results}
 
         return results
 
@@ -496,7 +477,6 @@ def create_experiment_runner(
     category: str,
     verbose: bool = False,
     log_to_galileo: bool = False,
-    use_concurrent_execution: bool = True,
 ):
     """
     Create a runner function for Galileo experiments.
@@ -507,7 +487,6 @@ def create_experiment_runner(
         category: The category of scenarios to run
         verbose: Whether to print verbose logs
         log_to_galileo: Whether to log to Galileo
-        use_concurrent_execution: Whether to execute multiple tools concurrently
 
     Returns:
         A function that can be passed to run_experiment
@@ -535,7 +514,7 @@ def create_experiment_runner(
             f"{Fore.CYAN}Scenario Index:{Style.RESET_ALL} {scenario_idx}\n"
             f"{Fore.CYAN}Log to Galileo:{Style.RESET_ALL} {log_to_galileo}\n"
             f"{Fore.CYAN}Verbose:{Style.RESET_ALL} {verbose}\n"
-            f"{Fore.CYAN}Concurrent Execution:{Style.RESET_ALL} {use_concurrent_execution}"
+            f"{Fore.CYAN}Parallel Tool Execution:{Style.RESET_ALL} Enabled"
         )
         print(log_section("RUN CONFIGURATION", runner_config, style=Fore.YELLOW))
 
@@ -549,7 +528,6 @@ def create_experiment_runner(
             category=category,
             log_to_galileo=log_to_galileo,
             verbose=verbose,
-            use_concurrent_execution=use_concurrent_execution,
         )
 
         # Get the first message from the scenario to include as input
@@ -589,7 +567,6 @@ def run_simulation_experiments(
     verbose: bool = False,
     log_to_galileo: bool = False,
     add_timestamp: bool = True,
-    use_concurrent_execution: bool = True,
 ):
     """
     Run experiments for all combinations of models, domains, and categories.
@@ -604,7 +581,6 @@ def run_simulation_experiments(
         verbose: Whether to print verbose logs
         log_to_galileo: Whether to log to Galileo
         add_timestamp: Whether to add timestamp to experiment name
-        use_concurrent_execution: Whether to execute multiple tools concurrently
 
     Returns:
         Dictionary of experiment results
@@ -625,7 +601,7 @@ def run_simulation_experiments(
         f"{Fore.CYAN}Verbose Logging:{Style.RESET_ALL} {verbose}\n"
         f"{Fore.CYAN}Log to Galileo:{Style.RESET_ALL} {log_to_galileo}\n"
         f"{Fore.CYAN}Add Timestamp:{Style.RESET_ALL} {add_timestamp}\n"
-        f"{Fore.CYAN}Concurrent Tool Execution:{Style.RESET_ALL} {'Enabled' if use_concurrent_execution else 'Disabled'}\n"
+        f"{Fore.CYAN}Parallel Tool Execution:{Style.RESET_ALL} Enabled\n"
         f"{Fore.CYAN}Agent Temperature:{Style.RESET_ALL} {config.AGENT_TEMPERATURE}\n"
         f"{Fore.CYAN}Agent Max Tokens:{Style.RESET_ALL} {config.AGENT_MAX_TOKENS}\n"
         f"{Fore.CYAN}Simulator Model:{Style.RESET_ALL} {config.SIMULATOR_MODEL}\n"
@@ -677,7 +653,7 @@ def run_simulation_experiments(
             f"{Fore.CYAN}Category:{Style.RESET_ALL} {category}\n"
             f"{Fore.CYAN}Log to Galileo:{Style.RESET_ALL} {log_to_galileo}\n"
             f"{Fore.CYAN}Verbose:{Style.RESET_ALL} {verbose}\n"
-            f"{Fore.CYAN}Concurrent Execution:{Style.RESET_ALL} {use_concurrent_execution}"
+            f"{Fore.CYAN}Parallel Tool Execution:{Style.RESET_ALL} Enabled"
         )
         logger.info(
             log_section("EXPERIMENT CONFIGURATION", exp_config, style=Fore.YELLOW)
@@ -690,7 +666,6 @@ def run_simulation_experiments(
             category=category,
             verbose=verbose,
             log_to_galileo=log_to_galileo,
-            use_concurrent_execution=use_concurrent_execution,
         )
 
         # Get or create dataset
