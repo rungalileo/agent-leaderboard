@@ -28,7 +28,8 @@ Each object must follow this exact structure:
     "parameter_name": {{
       "description": "Detailed description of the parameter ending with a period.",
       "type": "string|number|integer|boolean|array|object",
-      "title": "Parameter_Name_Title_Case"
+      "title": "Parameter_Name_Title_Case",
+      "enum": ["option1", "option2", "option3"]
     }},
     "array_parameter": {{
       "description": "Description for array parameter.",

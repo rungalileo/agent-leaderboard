@@ -119,7 +119,7 @@ def main():
     )
 
     parser.add_argument(
-        "--project_name",
+        "--project-name",
         type=str,
         default=None,
         help="Galileo project name",

@@ -1,4 +1,5 @@
 import json
+import random
 import time
 import os
 from typing import Dict, List, Any
@@ -645,12 +646,14 @@ def run_simulation_experiments(
         current_project_name = project_name
         if not project_name_specified:
             # Extract the model name from the full path if applicable
-            current_project_name = model.split("/")[-1]
+            current_project_name = model.replace("/", "-")
 
-            # Check if project exists and create it if it doesn't
-            if not bool(get_project(name=current_project_name)):
-                logger.info(f"Creating project: {current_project_name}")
-                create_project(current_project_name)
+        # Check if project exists and create it if it doesn't
+        time.sleep(random.randint(0, 20))
+        time.sleep(random.randint(0, 20))
+        if not bool(get_project(name=current_project_name)):
+            logger.info(f"Creating project: {current_project_name}")
+            create_project(current_project_name)
 
         # Create experiment name, add timestamp only if flag is set
         if add_timestamp:

@@ -3,7 +3,7 @@ Configuration file for Agent Evaluation system
 """
 
 # LLM Configuration
-SIMULATOR_MODEL = "gpt-4.1-2025-04-14"
+SIMULATOR_MODEL = "gpt-4.1-mini-2025-04-14"
 SIMULATOR_TEMPERATURE = 0.0
 SIMULATOR_MAX_TOKENS = 4000
 
@@ -96,9 +96,9 @@ BEHAVIOR GUIDELINES:
 2. If all tasks are completed successfully, end with "CONVERSATION_COMPLETE" and a goodbye message
 3. If agent indicates a request is unsupported: don't repeat it, move to another goal. If you exhausted all goals, end with "CONVERSATION_COMPLETE"
 4. Keep responses natural and realistic for your persona
-5. Be efficient and direct in your requests - provide complete information upfront when possible
-6. Avoid unnecessary back-and-forth by clearly stating all relevant details
-7. Stick to the user's goals and do not deviate from them."""
+5. Avoid unnecessary back-and-forth by clearly stating all relevant details
+6. Stick to the user's goals and do not deviate from them
+7. Respond in short and concise manner"""
 
 AGENT_SYSTEM_PROMPT = """{domain_instructions}
 
