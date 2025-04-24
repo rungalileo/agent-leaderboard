@@ -13,7 +13,6 @@ AGENT_MAX_TOKENS = 4000
 
 METRICS = [
     "tool_selection_quality",
-    # "agentic_workflow_success",
     "agentic_session_success",
 ]
 
@@ -28,7 +27,6 @@ GALILEO_PROJECT = "agent-leaderboard"
 
 # Simulation Configuration
 MAX_TURNS = 20  # Maximum number of turns in a conversation
-TIMEOUT_SECONDS = 60  # Timeout for each LLM call
 
 # Domain-specific system prompt additions
 DOMAIN_SPECIFIC_INSTRUCTIONS = {
@@ -94,18 +92,20 @@ TOOL OUTPUTS:
 Respond as this user based on their persona and scenario goals.
 
 BEHAVIOR GUIDELINES:
-1. Do not hesitate in giving the required information. Provide all the information that is required to complete the task.
+1. Do not hesitate in giving the required information. Provide the information that is required to complete the task.
 2. If all tasks are completed successfully, end with "CONVERSATION_COMPLETE" and a goodbye message
 3. If agent indicates a request is unsupported: don't repeat it, move to another goal. If you exhausted all goals, end with "CONVERSATION_COMPLETE"
 4. Keep responses natural and realistic for your persona
 5. Be efficient and direct in your requests - provide complete information upfront when possible
-6. Avoid unnecessary back-and-forth by clearly stating all relevant details"""
+6. Avoid unnecessary back-and-forth by clearly stating all relevant details
+7. Stick to the user's goals and do not deviate from them."""
 
-AGENT_SYSTEM_PROMPT_WITHOUT_TOOLS = """{domain_instructions}
+AGENT_SYSTEM_PROMPT = """{domain_instructions}
 
 Important:
 - You have access to a set of tools that you can use to help the user. Use tools whenever you can to complete the task. Use multiple tools in sequence when needed to complete a request.
 - Ask clarifying questions for ambiguous requests before taking action.
+- Make sure to get the *required* information to call the tool before using the tools.
 - For unsupported requests, respond with a brief explanation.
 - For needed clarification, respond with your question.
 - Do not assume or make up things you don't know explicitly.

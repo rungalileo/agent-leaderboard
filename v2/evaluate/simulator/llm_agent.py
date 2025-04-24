@@ -69,7 +69,7 @@ class LLMAgent:
             ]
 
         # Return a simplified prompt without tool descriptions since we're using tool binding
-        return config.AGENT_SYSTEM_PROMPT_WITHOUT_TOOLS.format(
+        return config.AGENT_SYSTEM_PROMPT.format(
             domain_instructions=domain_instructions
         )
 

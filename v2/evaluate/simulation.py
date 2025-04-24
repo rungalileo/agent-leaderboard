@@ -11,7 +11,8 @@ from llm_handler import LLMHandler
 from langchain_core.messages import HumanMessage
 from galileo import galileo_context
 from galileo.datasets import get_dataset
-from galileo.experiments import run_experiment
+from galileo.experiments import run_experiment, get_experiment
+from galileo.projects import get_project, create_project
 from dotenv import load_dotenv
 from utils import (
     setup_logger,
@@ -563,7 +564,7 @@ def run_simulation_experiments(
     domains: List[str],
     categories: List[str],
     dataset_name: str = None,
-    project: str = "agent-evaluations",
+    project_name: str = None,
     metrics: List[str] = config.METRICS,
     verbose: bool = False,
     log_to_galileo: bool = False,
@@ -577,7 +578,7 @@ def run_simulation_experiments(
         domains: List of domains to evaluate
         categories: List of categories to evaluate
         dataset_name: Name of the dataset to use
-        project: Galileo project name
+        project_name: Galileo project name
         metrics: List of metrics to evaluate
         verbose: Whether to print verbose logs
         log_to_galileo: Whether to log to Galileo
@@ -597,7 +598,7 @@ def run_simulation_experiments(
         f"{Fore.CYAN}Domains:{Style.RESET_ALL} {', '.join(domains)}\n"
         f"{Fore.CYAN}Categories:{Style.RESET_ALL} {', '.join(categories)}\n"
         f"{Fore.CYAN}Dataset Name:{Style.RESET_ALL} {dataset_name if dataset_name else 'Auto-generated'}\n"
-        f"{Fore.CYAN}Project:{Style.RESET_ALL} {project}\n"
+        f"{Fore.CYAN}Project:{Style.RESET_ALL} {project_name if project_name else 'Auto-generated from model names'}\n"
         f"{Fore.CYAN}Metrics:{Style.RESET_ALL} {', '.join(metrics)}\n"
         f"{Fore.CYAN}Verbose Logging:{Style.RESET_ALL} {verbose}\n"
         f"{Fore.CYAN}Log to Galileo:{Style.RESET_ALL} {log_to_galileo}\n"
@@ -634,9 +635,23 @@ def run_simulation_experiments(
         for category in categories
     ]
 
+    # Store original project_name state
+    project_name_specified = project_name is not None
+
     for model, domain, category in tqdm(
         experiment_combinations, desc="Running experiments", total=total_experiments
     ):
+        # Set project_name based on model if not specified
+        current_project_name = project_name
+        if not project_name_specified:
+            # Extract the model name from the full path if applicable
+            current_project_name = model.split("/")[-1]
+
+            # Check if project exists and create it if it doesn't
+            if not bool(get_project(name=current_project_name)):
+                logger.info(f"Creating project: {current_project_name}")
+                create_project(current_project_name)
+
         # Create experiment name, add timestamp only if flag is set
         if add_timestamp:
             timestamp = int(time.time())
@@ -646,12 +661,29 @@ def run_simulation_experiments(
         else:
             experiment_name = f"{model.replace('/', '-')}-{domain}-{category}"
 
+        # Check if experiment already exists
+        project_id = get_project(name=current_project_name).id
+        experiment_exists = bool(
+            get_experiment(project_id=project_id, experiment_name=experiment_name)
+        )
+
+        if experiment_exists:
+            logger.warning(
+                log_section(
+                    "EXPERIMENT EXISTS",
+                    f"Skipping experiment '{experiment_name}' as it already exists in project '{current_project_name}'",
+                    style=Fore.YELLOW,
+                )
+            )
+            continue
+
         # Print detailed experiment configuration
         exp_config = (
             f"{Fore.CYAN}Experiment Name:{Style.RESET_ALL} {experiment_name}\n"
             f"{Fore.CYAN}Model:{Style.RESET_ALL} {model}\n"
             f"{Fore.CYAN}Domain:{Style.RESET_ALL} {domain}\n"
             f"{Fore.CYAN}Category:{Style.RESET_ALL} {category}\n"
+            f"{Fore.CYAN}Project:{Style.RESET_ALL} {current_project_name}\n"
             f"{Fore.CYAN}Log to Galileo:{Style.RESET_ALL} {log_to_galileo}\n"
             f"{Fore.CYAN}Verbose:{Style.RESET_ALL} {verbose}\n"
             f"{Fore.CYAN}Parallel Tool Execution:{Style.RESET_ALL} Enabled"
@@ -716,7 +748,7 @@ def run_simulation_experiments(
         )
         result = run_experiment(
             experiment_name=experiment_name,
-            project=project,
+            project=current_project_name,
             dataset=dataset,
             function=runner,
             metrics=metrics,
@@ -755,13 +787,6 @@ def run_simulation_experiments(
         f"{Fore.CYAN}Categories Tested:{Style.RESET_ALL} {', '.join(categories)}"
     )
     print(log_section("EXPERIMENT SUMMARY", summary_info, style=Fore.MAGENTA))
-
-    os.makedirs("../data/results", exist_ok=True)
-    for exp_name, result in tqdm(
-        formatted_results.items(), desc="Saving experiment results"
-    ):
-        with open(f"../data/results/{exp_name}.json", "w") as f:
-            json.dump(result, f, indent=2)
 
     # Save results to CSV files organized by model name
     save_results_to_csv(formatted_results)

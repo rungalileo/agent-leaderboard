@@ -35,7 +35,7 @@ def main():
     parser.add_argument(
         "--categories",
         type=str,
-        default="tool_coordination",
+        default="adaptive_tool_use",
         required=True,
         help="Comma-separated list of categories to evaluate (e.g., 'tool_coordination,error_handling')",
     )
@@ -47,9 +47,9 @@ def main():
     )
 
     parser.add_argument(
-        "--project",
+        "--project_name",
         type=str,
-        default="agent-leaderboard-test",
+        default=None,
         help="Galileo project name",
     )
 
@@ -76,10 +76,6 @@ def main():
         help="Add timestamp to experiment name",
     )
 
-    parser.add_argument(
-        "--output-file", type=str, help="File to save experiment results (JSON format)"
-    )
-
     args = parser.parse_args()
 
     # Parse list arguments
@@ -94,7 +90,7 @@ def main():
         print(f"  Domains: {domains}")
         print(f"  Categories: {categories}")
         print(f"  Metrics: {metrics}")
-        print(f"  Project: {args.project}")
+        print(f"  Project: {args.project_name}")
         print(f"  Log to Galileo: {args.log_to_galileo}")
         print(f"  Add timestamp to experiment name: {args.add_timestamp}")
         print(f"  Parallel tool execution: Enabled")
@@ -107,7 +103,7 @@ def main():
         domains=domains,
         categories=categories,
         dataset_name=args.dataset_name,
-        project=args.project,
+        project_name=args.project_name,
         metrics=metrics,
         verbose=args.verbose,
         log_to_galileo=args.log_to_galileo,
@@ -121,6 +117,6 @@ if __name__ == "__main__":
 #   --models "gpt-4.1-nano-2025-04-14" \
 #   --domains "banking" \
 #   --categories "tool_coordination" \
-#   --project "agent-leaderboard-test" \
+#   --project_name "agent-leaderboard-test" \
 #   --verbose
 #   --log-to-galileo
