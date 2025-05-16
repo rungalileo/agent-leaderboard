@@ -325,7 +325,7 @@ Response: {json.dumps(result['response'], indent=2)}
             span_name = "tool_selection" if tool_calls else "agent_response"
             self.galileo_logger.add_llm_span(
                 input=exact_input,
-                output=json.dumps(output_with_tool_calls),
+                output=output_with_tool_calls,
                 model=self.model_name,
                 tools=tools,
                 duration_ns=tool_selection_duration_ns,

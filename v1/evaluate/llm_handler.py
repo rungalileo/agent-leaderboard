@@ -50,13 +50,18 @@ class LLMHandler:
                 "deepseek-ai/DeepSeek-R1",
                 "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
                 "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+                "Qwen/Qwen3-235B-A22B-fp8",
             ],
             "openai": [
                 "gpt-4o-2024-11-20",
                 "gpt-4o-mini",
                 "o1-2024-12-17",
                 "o3-mini-2025-01-31",
-                "gpt-4.5-preview-2025-02-27",
+                "gpt-4.1-2025-04-14",
+                "gpt-4.1-mini-2025-04-14",
+                "gpt-4.1-nano-2025-04-14",
+                "o4-mini-2025-04-16",
+                "o3-2025-04-16",
             ],
             "fireworks": [
                 "accounts/fireworks/models/qwen-qwq-32b-preview",
@@ -64,6 +69,7 @@ class LLMHandler:
                 "accounts/fireworks/models/deepseek-r1",
                 "accounts/fireworks/models/llama4-maverick-instruct-basic",
                 "accounts/fireworks/models/llama4-scout-instruct-basic",
+                "accounts/fireworks/models/qwen3-30b-a3b",
             ],
             "bedrock": [
                 "amazon.nova-pro-v1:0",
@@ -133,22 +139,24 @@ class LLMHandler:
         self.model_patterns = {
             "o1": "openai",
             "o3": "openai",
+            "o4": "openai",
             "gpt-4o": "openai",
-            "gpt-4.5": "openai",
+            "gpt-4.1": "openai",
             "claude": "anthropic",
             "mistral-": "mistral",
             "ministral": "mistral",
             "gemini": "google",
             "mixtral": "together",
             "meta-llama": "together",
-            "fireworks": "fireworks",
             "r1": "together",
+            "qwen3": "together",
             "deepseek": "deepseek",
             "nova": "bedrock",
             "command": "cohere",
             "nvidia": "nvidia",
             "gemma": "google",
             "palmyra": "writer",
+            "fireworks": "fireworks",
         }
 
     def _detect_provider(self, model_name: str) -> str:
@@ -220,8 +228,8 @@ class LLMHandler:
 
         model_params = {"temperature": temperature, "max_tokens": max_tokens, **kwargs}
 
-        # remove temperature if model name contains o1
-        if ("o1" in model_name) or ("o3" in model_name):
+        # remove temperature if model name contains o1, o3, o4
+        if any(prefix in model_name for prefix in ["o1", "o3", "o4"]):
             model_params.pop("temperature", None)
 
         # set temperature to 0.6 if model name contains r1
