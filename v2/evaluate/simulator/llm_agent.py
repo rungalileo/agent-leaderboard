@@ -210,10 +210,6 @@ Response: {json.dumps(result['response'], indent=2)}
         start_time = time.time()
         self.current_turn += 1
 
-        # Make sure the tool simulator has the latest tools
-        if self.tool_simulator:
-            self.tool_simulator.set_tools(tools)
-
         # Create system prompt
         system_prompt = self.update_agent_prompt(tools)
 

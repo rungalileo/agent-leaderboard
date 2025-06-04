@@ -19,6 +19,7 @@ class ToolSimulator:
         domain: str,
         category: str,
         simulator_llm,
+        tools: List[Dict[str, Any]],
         galileo_logger=None,
         verbose: bool = False,
     ):
@@ -37,15 +38,6 @@ class ToolSimulator:
         self.simulator_llm = simulator_llm
         self.galileo_logger = galileo_logger
         self.verbose = verbose
-        self.tools = []
-
-    def set_tools(self, tools: List[Dict[str, Any]]):
-        """
-        Set the available tools for the simulator.
-
-        Args:
-            tools: List of available tools
-        """
         self.tools = tools
 
     def process_tool_call_response(self, response) -> List[Dict[str, Any]]:

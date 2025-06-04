@@ -69,16 +69,21 @@ class AgentSimulation:
         self.llm_handler = LLMHandler()
 
         # Load data
-        self.tools = self._load_tools()
+        self.tools_with_output_schema = self._load_tools()
+        # remove response_schema key from tools
+        self.tools = [
+            {k: v for k, v in tool.items() if k != "response_schema"}
+            for tool in self.tools_with_output_schema
+        ]
         self.personas = self._load_personas()
         self.scenarios = self._load_scenarios()
 
-        # Initialize LLMs with tools always bound
+        # Initialize LLMs with tools 
         self.agent_llm = self.llm_handler.get_llm(
             model_name=agent_model,
             temperature=config.AGENT_TEMPERATURE,
             max_tokens=config.AGENT_MAX_TOKENS,
-            tools=self.tools,  # Always bind tools to the LLM
+            tools=self.tools,  
         )
 
         self.simulator_llm = self.llm_handler.get_llm(
@@ -100,18 +105,15 @@ class AgentSimulation:
         else:
             self.galileo_logger = None
 
-        # Initialize the refactored modules
         # Tool simulator
         self.tool_simulator = ToolSimulator(
             domain=domain,
             category=category,
             simulator_llm=self.simulator_llm,
+            tools=self.tools_with_output_schema,
             galileo_logger=self.galileo_logger,
             verbose=verbose,
         )
-
-        # Initialize tool simulator with tools
-        self.tool_simulator.set_tools(self.tools)
 
         # Agent
         self.agent = LLMAgent(
@@ -298,7 +300,7 @@ class AgentSimulation:
                     # Get user message
                     if conversation_history[message_index].get("role") == "user":
                         workflow_input += f"=== TURN {current_turn} ===\n\n"
-                        workflow_input += f"INPUT:\n\nHuman: {conversation_history[message_index].get('content')}\n\n"
+                        workflow_input += f"Human: {conversation_history[message_index].get('content')}\n\n"
                         message_index += 1
                     else:
                         message_index += 1
@@ -321,7 +323,7 @@ class AgentSimulation:
                     and conversation_history[message_index].get("role") == "user"
                 ):
                     workflow_input += f"=== TURN {current_turn} ===\n\n"
-                    workflow_input += f"INPUT:\n\nHuman: {conversation_history[message_index].get('content')}\n\n"
+                    workflow_input += f"Human: {conversation_history[message_index].get('content')}\n\n"
                     current_turn += 1
 
                 # Add current turn with the input
@@ -331,7 +333,7 @@ class AgentSimulation:
                     or conversation_history[-1].get("content") != input_message
                 ):
                     workflow_input += f"=== TURN {turn_count} ===\n\n"
-                    workflow_input += f"INPUT:\n\nHuman: {input_message}\n\n"
+                    workflow_input += f"Human: {input_message}\n\n"
 
                 # Store workflow input for next turn
                 all_workflow_inputs.append(workflow_input)

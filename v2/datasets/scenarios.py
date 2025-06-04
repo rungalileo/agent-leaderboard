@@ -335,20 +335,41 @@ Avoid simple, straightforward requests - the assistant should have to work hard 
 def process_persona(args_tuple):
     """Process a single persona - for use with ThreadPoolExecutor."""
     idx, persona, tools, num_scenarios, domain, category = args_tuple
-    try:
-        # Generate scenarios for the current persona
-        scenarios = generate_scenarios(
-            tools=tools,
-            persona=persona,
-            persona_index=idx,
-            num_scenarios=num_scenarios,
-            domain=domain,
-            category=category,
-        )
-        return scenarios
-    except Exception as e:
-        print(f"Error processing persona {idx}: {str(e)}")
-        return []
+    max_retries = 3
+    retry_count = 0
+
+    while retry_count < max_retries:
+        try:
+            # Generate scenarios for the current persona
+            scenarios = generate_scenarios(
+                tools=tools,
+                persona=persona,
+                persona_index=idx,
+                num_scenarios=num_scenarios,
+                domain=domain,
+                category=category,
+            )
+
+            # Validate all scenarios
+            all_valid = True
+            for scenario in scenarios:
+                if not validate_scenario(scenario, category):
+                    all_valid = False
+                    break
+
+            if all_valid and len(scenarios) == num_scenarios:
+                return scenarios
+            else:
+                print(f"Validation failed for persona {idx}, attempt {retry_count + 1}/{max_retries}")
+                retry_count += 1
+                continue
+
+        except Exception as e:
+            print(f"Error processing persona {idx} (attempt {retry_count + 1}/{max_retries}): {str(e)}")
+            retry_count += 1
+
+    print(f"Failed to generate valid scenarios for persona {idx} after {max_retries} attempts")
+    return []
 
 
 def save_scenarios(
@@ -368,7 +389,7 @@ def save_scenarios(
 
 
 if __name__ == "__main__":
-    # python scenarios.py --domain banking --categories tool_coordination --overwrite
+    # python scenarios.py --domain banking --categories adaptive_tool_use --overwrite
     parser = argparse.ArgumentParser(
         description="Generate chat scenarios for testing AI tools using Claude"
     )
