@@ -237,7 +237,7 @@ class ToolSimulator:
                 conversation_history=conversation_history,
                 agent_action=agent_action,
             )
-        return None
+        return {"Error": "Tool not found"}
 
     def simulate_tools(
         self,

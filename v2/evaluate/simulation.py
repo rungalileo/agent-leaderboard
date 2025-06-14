@@ -471,7 +471,11 @@ class AgentSimulation:
         logger.info(log_section("SUMMARY", sim_end_info, style=Fore.BLUE))
 
         results["success"] = True if results["turns_completed"] > 0 else False
-        results["total_duration_ms"] = int(total_duration * 1000)
+        results["num_input_tokens"] = self.agent.num_input_tokens
+        results["num_output_tokens"] = self.agent.num_output_tokens
+        results["total_tokens"] = self.agent.total_tokens
+        results["total_duration_with_tool_calls"] = round(total_duration, 2)
+        results["total_duration_without_tool_calls"] = round(self.agent.total_duration, 2)
 
         return results
 

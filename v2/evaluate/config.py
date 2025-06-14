@@ -22,11 +22,8 @@ FILE_PATHS = {
     "tools": "../data/tools/{domain}.json",
 }
 
-# Galileo Configuration
-GALILEO_PROJECT = "agent-leaderboard"
-
 # Simulation Configuration
-MAX_TURNS = 20  # Maximum number of turns in a conversation
+MAX_TURNS = 15  # Maximum number of turns in a conversation
 
 # Domain-specific system prompt additions
 DOMAIN_SPECIFIC_INSTRUCTIONS = {
@@ -61,7 +58,7 @@ You can accomplish most insurance tasks using the tools provided.""",
 }
 
 # Prompt Templates
-TOOL_SIMULATOR_PROMPT = """You are a tool simulator for evaluating AI agents. Generate a realistic response that conforms to the given schema and is contextually relevant to the ongoing conversation.
+TOOL_SIMULATOR_PROMPT = """You are a tool simulator for evaluating AI agents. Generate a realistic response that STRICTLY conforms to the given RESPONSE SCHEMA and is contextually relevant to the ongoing conversation and the agent's action.
 
 TOOL NAME: {tool_name}
 TOOL PARAMETERS: {tool_parameters}
@@ -73,7 +70,15 @@ CONVERSATION HISTORY:
 AGENT'S ACTION:
 {agent_action}
 
-Generate a valid JSON response that matches the schema and would realistically be returned by this tool. Your response should be contextually appropriate based on the conversation history and the agent's action. Make the response realistic and consistent with what a real tool would return in this specific situation."""
+STRICT REQUIREMENTS:
+1. Your response MUST be a valid JSON object
+2. ALL required fields specified in the schema MUST be present
+3. Each field MUST match the exact type specified in the schema (string, number, boolean, etc.)
+4. Enum fields MUST only use values from the specified enum list
+5. Do not add fields that are not in the schema
+6. Ensure all nested objects and arrays match their schema definitions
+
+Generate a valid JSON response that exactly matches the schema and would realistically be returned by this tool."""
 
 USER_SIMULATOR_PROMPT = """You are simulating a user with the following persona:
 
@@ -92,13 +97,11 @@ TOOL OUTPUTS:
 Respond as this user based on their persona and scenario goals.
 
 BEHAVIOR GUIDELINES:
-1. Do not hesitate in giving the required information. Provide the information that is required to complete the task.
+1. Provide the information that is required to complete the task.
 2. If all tasks are completed successfully, end with "CONVERSATION_COMPLETE" and a goodbye message
 3. If agent indicates a request is unsupported: don't repeat it, move to another goal. If you exhausted all goals, end with "CONVERSATION_COMPLETE"
 4. Keep responses natural and realistic for your persona
-5. Avoid unnecessary back-and-forth by clearly stating all relevant details
-6. Stick to the user's goals and do not deviate from them
-7. Respond in short and concise manner"""
+5. Respond in short and concise manner"""
 
 AGENT_SYSTEM_PROMPT = """{domain_instructions}
 
@@ -106,7 +109,7 @@ Important:
 - You have access to a set of tools that you can use to help the user. Use tools whenever you can to complete the task. Use multiple tools in sequence when needed to complete a request.
 - Ask clarifying questions for ambiguous requests before taking action.
 - Make sure to get the *required* information to call the tool before using the tools.
-- For unsupported requests, respond with a brief explanation.
+- For unsupported requests, respond with a brief explanation on why you cannot help the user.
 - For needed clarification, respond with your question.
 - Do not assume or make up things you don't know explicitly.
 - Do not give any generic advice or do things you are not asked to do.

@@ -9,7 +9,7 @@ from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_together import ChatTogether
 from langchain_openai import ChatOpenAI
-from langchain_fireworks import ChatFireworks
+# from langchain_fireworks import ChatFireworks
 from langchain_aws import ChatBedrock
 from langchain_writer import ChatWriter
 from langchain_deepseek import ChatDeepSeek
@@ -25,6 +25,8 @@ class LLMHandler:
                 "claude-3-5-sonnet-20241022",
                 "claude-3-5-haiku-20241022",
                 "claude-3-7-sonnet-20250219",
+                "claude-sonnet-4-20250514",
+                "claude-opus-4-20250514",
             ],
             "mistral": [
                 "open-mistral-nemo-2407",
@@ -40,9 +42,8 @@ class LLMHandler:
                 "gemini-1.5-pro",
                 "gemini-2.0-flash-001",
                 "gemini-2.0-flash-lite-001",
-                "gemini-2.5-pro-exp-03-25",
-                "gemini-2.5-pro-preview-03-25",
-                # "gemma-3-27b-it",
+                "gemini-2.5-flash-preview-05-20",
+                "gemini-2.5-pro-preview-06-05",
             ],
             "together": [
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo",
@@ -81,6 +82,7 @@ class LLMHandler:
             ],
             "writer": [
                 "palmyra-x-004",
+                "palmyra-x5"
             ],
             "deepseek": [
                 "deepseek-chat",
@@ -206,8 +208,8 @@ class LLMHandler:
             llm = ChatTogether(model=model_name, **model_params)
         elif provider == "openai":
             llm = ChatOpenAI(model=model_name, **model_params)
-        elif provider == "fireworks":
-            llm = ChatFireworks(model=model_name, **model_params)
+        # elif provider == "fireworks":
+            # llm = ChatFireworks(model=model_name, **model_params)
         elif provider == "bedrock":
             llm = ChatBedrock(model_id=model_name, **model_params)
         elif provider == "cohere":

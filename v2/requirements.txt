@@ -1,4 +1,4 @@
-galileo==0.10.0
+galileo==1.2.0
 langchain 
 langchain_openai 
 langchain_anthropic 
@@ -13,3 +13,4 @@ langchain_nvidia_ai_endpoints
 langchain_cohere
 colorama
 pandas
+langchain-xai

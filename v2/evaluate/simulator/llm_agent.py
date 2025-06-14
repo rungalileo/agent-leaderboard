@@ -44,6 +44,10 @@ class LLMAgent:
         self.history_manager = history_manager
         self.agent_llm = agent_llm
         self.tool_simulator = tool_simulator
+        self.num_input_tokens = 0
+        self.num_output_tokens = 0
+        self.total_tokens = 0
+        self.total_duration = 0
 
         # Store workflow context for Galileo logging
         self.workflow_context = {"inputs": [], "outputs": []}
@@ -132,7 +136,16 @@ Response: {json.dumps(result['response'], indent=2)}
         # Call the agent to generate the final response
         start_time = time.time()
         response = agent_llm.invoke(messages)
-        end_time = time.time()
+        duration = time.time() - start_time   
+
+        prompt_tokens = response.response_metadata["token_usage"]["prompt_tokens"]
+        completion_tokens = response.response_metadata["token_usage"]["completion_tokens"]
+        total_tokens = response.response_metadata["token_usage"]["total_tokens"]
+
+        self.num_input_tokens += prompt_tokens
+        self.num_output_tokens += completion_tokens
+        self.total_tokens += total_tokens
+        self.total_duration += duration
 
         # Update workflow context - only add the current input
         self.workflow_context["inputs"].append(exact_input)
@@ -141,10 +154,13 @@ Response: {json.dumps(result['response'], indent=2)}
         # Log the full prompt to Galileo if logger exists
         if self.galileo_logger:
             self.galileo_logger.add_llm_span(
-                input=exact_input,
+                input=exact_input,  
                 output=response.content,
                 model=self.model_name,
-                duration_ns=int((end_time - start_time) * 1_000_000_000),
+                num_input_tokens=prompt_tokens,
+                num_output_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                duration_ns=int(duration*1_000_000_000),
                 name="agent_final_response",
             )
 
@@ -275,15 +291,21 @@ Response: {json.dumps(result['response'], indent=2)}
             self.workflow_context["inputs"].append(workflow_input)
 
         # Call the agent for initial response/tool selection
-        tool_selection_start_time = time.time()
+        start_time = time.time()
 
         # Tool binding approach - we expect structured tool calls in the response
         agent_response = self.agent_llm.invoke(messages)
-        tool_selection_end_time = time.time()
-        tool_selection_duration_ns = int(
-            (tool_selection_end_time - tool_selection_start_time) * 1_000_000_000
-        )
+        duration = time.time() - start_time
 
+        prompt_tokens = agent_response.response_metadata["token_usage"]["prompt_tokens"]
+        completion_tokens = agent_response.response_metadata["token_usage"]["completion_tokens"]
+        total_tokens = agent_response.response_metadata["token_usage"]["total_tokens"]
+
+        self.num_input_tokens += prompt_tokens
+        self.num_output_tokens += completion_tokens
+        self.total_tokens += total_tokens
+        self.total_duration += duration
+        
         # Update workflow context with the raw response content
         self.workflow_context["outputs"].append(agent_response.content)
 
@@ -323,8 +345,11 @@ Response: {json.dumps(result['response'], indent=2)}
                 input=exact_input,
                 output=output_with_tool_calls,
                 model=self.model_name,
+                num_input_tokens=prompt_tokens,
+                num_output_tokens=completion_tokens,
+                total_tokens=total_tokens,
                 tools=tools,
-                duration_ns=tool_selection_duration_ns,
+                duration_ns=int(duration*1_000_000_000),
                 name=span_name,
             )
 
@@ -344,17 +369,13 @@ Response: {json.dumps(result['response'], indent=2)}
 
         # Only generate final response if tools were used, otherwise use raw agent response
         if tool_results:
-            response_start_time = time.time()
             final_response = self.generate_final_response(
                 conversation_history=conversation_history,
                 user_message=user_message,
                 tool_results=tool_results,
                 agent_llm=self.agent_llm,
             )
-            response_end_time = time.time()
-            response_duration_ns = int(
-                (response_end_time - response_start_time) * 1_000_000_000
-            )
+
         else:
             if hasattr(agent_response, "content"):
                 final_response = agent_response.content
