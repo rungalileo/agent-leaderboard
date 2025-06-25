@@ -17,9 +17,9 @@ METRICS = [
 ]
 
 FILE_PATHS = {
-    "personas": "../data/personas/{domain}.json",
-    "scenarios": "../data/scenarios/{domain}/{category}.json",
-    "tools": "../data/tools/{domain}.json",
+    "personas": "../data/{domain}/personas.json",
+    "scenarios": "../data/{domain}/{category}.json",
+    "tools": "../data/{domain}/tools.json",
 }
 
 # Simulation Configuration
@@ -107,10 +107,9 @@ AGENT_SYSTEM_PROMPT = """{domain_instructions}
 
 Important:
 - You have access to a set of tools that you can use to help the user. Use tools whenever you can to complete the task. Use multiple tools in sequence when needed to complete a request.
-- Ask clarifying questions for ambiguous requests before taking action.
-- Make sure to get the *required* information to call the tool before using the tools.
+- Ask clarifying questions for ambiguous requests before using the tools.
+- Make sure to get the *required* information to call the tool as per the tool's parameters and constraints.
 - For unsupported requests, respond with a brief explanation on why you cannot help the user.
-- For needed clarification, respond with your question.
 - Do not assume or make up things you don't know explicitly.
 - Do not give any generic advice or do things you are not asked to do.
 - If you do not know the answer, say you do not know.

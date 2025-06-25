@@ -6,21 +6,24 @@ import re
 import os
 import argparse
 from dotenv import load_dotenv
-
+from tqdm import tqdm
 load_dotenv("../.env")
 
-MODEL = "claude-3-7-sonnet-20250219"
+
+MODEL = "claude-sonnet-4-20250514"
 
 SYSTEM_PROMPT = """You are an expert AI system designer specializing in creating function definitions for AI tools. 
-You excel at understanding industry-specific needs and translating them into well-structured JSONSchema function definitions."""
+You excel at understanding domain-specific needs and translating them into well-structured JSONSchema function definitions."""
 
 HUMAN_PROMPT = """## Task Description
-Generate exactly {num_tools} function definitions for a customer-facing conversational AI chatbot in the {industry} industry. These tools must follow the JSONSchema format and enable the chatbot to perform domain-specific tasks and respond to customer queries effectively.
+Generate exactly 1 function definition for a customer-facing conversational AI chatbot in the {domain} domain. This tool must follow the JSONSchema format and enable the chatbot to perform domain-specific tasks and respond to customer queries effectively.
+
+{existing_tools_section}
 
 ## Output Format Requirements
-Your response must be a valid JSON array containing exactly {num_tools} objects, with NO explanatory text before or after the JSON. Your entire response must be parseable with json.loads().
+Your response must be a valid JSON object (NOT an array) representing exactly 1 function, with NO explanatory text before or after the JSON. Your entire response must be parseable with json.loads().
 
-Each object must follow this exact structure:
+The object must follow this exact structure:
 ```json
 {{
   "description": "Specific function purpose and information present in its response.",
@@ -43,7 +46,7 @@ Each object must follow this exact structure:
   "required": ["list", "of", "required", "parameter", "names"],
   "title": "function_name_in_snake_case",
   "type": "object",
-  "response_schema": {{
+  "response_schema": {{ // minimum fields required for a response schema
     "description": "Description of the response format.",
     "type": "object",
     "properties": {{
@@ -63,47 +66,10 @@ Each object must follow this exact structure:
 3. NO trailing commas after the last item in objects or arrays
 4. NO comments in the JSON
 5. Arrays and objects must be properly closed with matching brackets and braces
-6. The output must be a single JSON array containing {num_tools} function objects
+6. The output must be a single JSON object representing 1 function
 7. Parameter titles must be in snake_case with underscores
 8. Function titles (tool names) must be in snake_case
-9. Parameter descriptions must end with a period
 10. Array parameters must include the "items" field with the element type
-11. Each tool must include a response_schema defining the expected response format
-12. Commas must correctly separate items in arrays and properties in objects
-13. Do not use trailing commas (e.g., {{"a": 1,}} is invalid)
-14. Ensure all opening brackets/braces have matching closing brackets/braces
-
-## JSON Array Structure Example:
-```json
-[
-  {{
-    "description": "First tool description",
-    "properties": {{ ... }},
-    "required": [ ... ],
-    "title": "first_tool_name",
-    "type": "object",
-    "response_schema": {{ ... }}
-  }},
-  {{
-    "description": "Second tool description",
-    "properties": {{ ... }},
-    "required": [ ... ],
-    "title": "second_tool_name",
-    "type": "object",
-    "response_schema": {{ ... }}
-  }}
-]
-```
-
-## Self-Validation Steps
-Before submitting your response, verify that:
-1. The JSON is properly formatted with correct commas between objects and properties
-2. All brackets and braces are properly matched and closed
-3. The output starts with '[' and ends with ']' with no extra text
-4. There are exactly {num_tools} tools in the array
-5. All required fields are present in each tool
-6. No trailing commas exist in the JSON structure
-7. The entire response is valid JSON that could be parsed with JSON.parse()
 
 ## Function Design Guidelines:
 1. Parameter Design:
@@ -112,14 +78,25 @@ Before submitting your response, verify that:
    - Use enums for fixed options when appropriate
    - Arrays must specify their item types
    - Parameter titles must be in Title_Case
+   - Aim for a good mix of required and optional parameters whenever possible:
+     * Include 2-4 required parameters for essential functionality
+     * Include 1-3 optional parameters for enhanced features, filtering, or customization
+     * Optional parameters should provide meaningful value without being strictly necessary
+     * Consider parameters like filters, limits, sorting options, formatting preferences, or additional details as good candidates for optional parameters
 
 2. Function Scope:
    - Each function should have one clear purpose
-   - Functions should be specific to the {industry} industry and customer interactions
+   - Functions should be specific to the {domain} domain and customer interactions
    - Group related functions under the same system/API name
    - Cover common customer tasks, inquiries, and service operations
 
-3. Categories to Include as Needed:
+3. Response Schema Design:
+   - Keep response schemas simple and focused on essential information
+   - Limit to 1-5 key fields maximum to avoid overly complex responses
+   - Include only the most important data that would be immediately useful to customers
+   - Avoid nested objects or arrays unless absolutely necessary
+
+4. Categories to Include as Needed:
    - Customer information retrieval
    - Product/service information
    - Transactions
@@ -136,9 +113,9 @@ Before submitting your response, verify that:
    - Customer feedback
    - Service troubleshooting
 
-Consider the typical customer needs, questions, pain points, terminology, and service expectations specific to the {industry} industry.
+Consider the typical customer needs, questions, pain points, terminology, and service expectations specific to the {domain} domain.
 
-REMEMBER: Your response must be a single JSON array that can be parsed by json.loads(). Do not include any explanatory text or markdown formatting."""
+REMEMBER: Your response must be a single JSON object that can be parsed by json.loads(). Do not include any explanatory text or markdown formatting."""
 
 
 def clean_json_string(json_str: str) -> str:
@@ -203,12 +180,13 @@ def validate_tool_schema(tool: dict) -> bool:
     return True
 
 
-def generate_tools(industry: str, num_tools: int) -> List[dict]:
+def generate_tools(domain: str, num_tools: int) -> List[dict]:
     """
-    Generate tool definitions for a specific industry using Claude 3.7 Sonnet.
+    Generate tool definitions for a specific domain using Claude 3.7 Sonnet.
+    Tools are generated one by one to avoid duplicates and provide progress tracking.
 
     Args:
-        industry (str): The industry for which to generate tools
+        domain (str): The domain for which to generate tools
         num_tools (int): Number of tools to generate
 
     Returns:
@@ -222,50 +200,78 @@ def generate_tools(industry: str, num_tools: int) -> List[dict]:
         [("system", SYSTEM_PROMPT), ("human", HUMAN_PROMPT)]
     )
 
-    # Format the prompt with the industry and number of tools
-    formatted_prompt = prompt_template.format_messages(
-        industry=industry, num_tools=num_tools
-    )
+    generated_tools = []
+    
+    # Generate tools one by one with progress bar
+    with tqdm(total=num_tools, desc=f"Generating {domain} tools") as pbar:
+        for i in range(num_tools):
+            # Create existing tools section for the prompt
+            if generated_tools:
+                existing_tools_text = "## Previously Generated Tools\nDo NOT generate any of the following tools that have already been created:\n\n"
+                for j, tool in enumerate(generated_tools, 1):
+                    existing_tools_text += f"{j}. **{tool['title']}**: {tool['description']}\n"
+                existing_tools_text += "\nMake sure your new tool is different from all the above tools in both name and functionality.\n"
+            else:
+                existing_tools_text = ""
+            
+            # Format the prompt with the domain and existing tools
+            formatted_prompt = prompt_template.format_messages(
+                domain=domain, 
+                existing_tools_section=existing_tools_text
+            )
 
-    # Get the response from Claude
-    response = chat.invoke(formatted_prompt, temperature=0.3, max_tokens=4000)
+            # Get the response from Claude
+            response = chat.invoke(formatted_prompt, temperature=0.8, max_tokens=1500)
 
-    try:
-        # Clean and parse the JSON response
-        json_str = clean_json_string(response.content)
-        tools = json.loads(json_str)
+            try:
+                # Clean and parse the JSON response
+                json_str = clean_json_string(response.content)
+                tool = json.loads(json_str)
 
-        # Validate the response
-        if not isinstance(tools, list):
-            raise ValueError("Response is not a JSON array")
-        if len(tools) != num_tools:
-            raise ValueError(f"Expected {num_tools} tools, got {len(tools)}")
+                # Validate the response
+                if not isinstance(tool, dict):
+                    raise ValueError("Response is not a JSON object")
 
-        # Validate each tool's schema
-        for i, tool in enumerate(tools):
-            if not validate_tool_schema(tool):
-                raise ValueError(
-                    f"Tool at index {i} does not follow the required schema"
-                )
+                # Validate the tool's schema
+                if not validate_tool_schema(tool):
+                    raise ValueError("Tool does not follow the required schema")
 
-        return tools
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Failed to parse JSON response: {e}\nResponse content: {json_str}"
-        )
-    except Exception as e:
-        raise ValueError(f"Error processing response: {str(e)}")
+                # Check for duplicate tool names
+                existing_titles = [t['title'] for t in generated_tools]
+                if tool['title'] in existing_titles:
+                    raise ValueError(f"Duplicate tool name: {tool['title']}")
+
+                generated_tools.append(tool)
+                pbar.set_postfix({'current_tool': tool['title']})
+                pbar.update(1)
+
+            except json.JSONDecodeError as e:
+                print(f"\nWarning: Failed to parse JSON for tool {i+1}: {e}")
+                print(f"Response content: {json_str}")
+                # Continue to next iteration instead of failing completely
+                pbar.set_postfix({'status': 'JSON parse error - retrying'})
+                continue
+            except Exception as e:
+                print(f"\nWarning: Error processing tool {i+1}: {str(e)}")
+                # Continue to next iteration instead of failing completely
+                pbar.set_postfix({'status': 'Processing error - retrying'})
+                continue
+
+    if len(generated_tools) < num_tools:
+        print(f"\nWarning: Only generated {len(generated_tools)} out of {num_tools} requested tools")
+    
+    return generated_tools
 
 
 def save_tools(
-    tools: List[dict], industry: str, output_dir: str, overwrite: bool = True
+    tools: List[dict], domain: str, output_dir: str, overwrite: bool = True
 ) -> str:
     """
     Save the generated tools to a JSON file in the specified output directory.
 
     Args:
         tools (List[dict]): List of tool definitions to save
-        industry (str): Industry name used for the filename
+        domain (str): Industry name used for the filename
         output_dir (str): Output directory for saving tools
         overwrite (bool): Whether to overwrite existing file if it exists
 
@@ -275,8 +281,8 @@ def save_tools(
     Raises:
         FileExistsError: If file exists and overwrite is False
     """
-    os.makedirs(output_dir, exist_ok=True)
-    file_path = os.path.join(output_dir, f"{industry.lower()}.json")
+    file_path = os.path.join(output_dir, domain.lower(), "tools.json")
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
     if os.path.exists(file_path) and not overwrite:
         raise FileExistsError(f"File already exists: {file_path}")
@@ -289,14 +295,14 @@ def save_tools(
 
 
 if __name__ == "__main__":
-    # python tools.py --industry banking --num-tools 3 --overwrite
+    # python tools.py --domain banking --num-tools 3 --overwrite
     parser = argparse.ArgumentParser(
-        description="Generate tool definitions for a specific industry using Claude 3.7 Sonnet"
+        description="Generate tool definitions for a specific domain using Claude 3.7 Sonnet"
     )
 
     # Required arguments
     parser.add_argument(
-        "--industry",
+        "--domain",
         type=str,
         required=True,
         help="Industry for which to generate tools (e.g., banking, healthcare)",
@@ -318,33 +324,21 @@ if __name__ == "__main__":
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="../data/tools",
-        help="Output directory for saving tools (default: data/tools)",
-    )
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=0.3,
-        help="Temperature for Claude's response generation (default: 0.3)",
-    )
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=4000,
-        help="Maximum tokens for Claude's response (default: 4000)",
+        default="../data",
+        help="Output directory for saving tools (default: data)",
     )
 
     args = parser.parse_args()
 
     try:
         # Generate tools with specified parameters
-        tools = generate_tools(args.industry, args.num_tools)
+        tools = generate_tools(args.domain, args.num_tools)
 
         # Save tools with specified parameters
-        file_path = save_tools(tools, args.industry, args.output_dir, args.overwrite)
+        file_path = save_tools(tools, args.domain, args.output_dir, args.overwrite)
 
         print(
-            f"Successfully generated and saved {args.num_tools} tools for {args.industry} industry"
+            f"Successfully generated and saved {args.num_tools} tools for {args.domain} domain"
         )
         print(f"Tools saved to: {file_path}")
 
@@ -355,4 +349,4 @@ if __name__ == "__main__":
         print(f"Error: {str(e)}")
         parser.print_help()
 
-# python tools.py --industry banking --num-tools 20 --overwrite
+# python tools.py --domain banking --num-tools 20 --overwrite

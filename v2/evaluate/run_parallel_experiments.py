@@ -144,7 +144,7 @@ def main():
     parser.add_argument(
         "--add-timestamp",
         action="store_true",
-        default=False,
+        default=True,
         help="Add timestamp to experiment name",
     )
 

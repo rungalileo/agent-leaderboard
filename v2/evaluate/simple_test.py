@@ -4,6 +4,7 @@ from typing import Dict, List, Any
 from galileo.experiments import run_experiment
 from dotenv import load_dotenv
 from galileo import galileo_context
+from galileo.projects import get_project, create_project
 
 load_dotenv("../.env")
 
@@ -311,11 +312,15 @@ weather_dataset = [
 
 # Run the experiment
 if __name__ == "__main__":
+    project_name = "test"
+    if not bool(get_project(name=project_name)):
+            print(f"Creating project: {project_name}")
+            create_project(project_name)
+            
     # Use microseconds in the timestamp to ensure uniqueness
     experiment_name = f"weather-conversation-experiment-{int(time.time() * 1000000)}"
     METRICS = [
         "tool_selection_quality",
-        "agentic_workflow_success",
         "agentic_session_success",
     ]
 
@@ -325,6 +330,6 @@ if __name__ == "__main__":
         dataset=weather_dataset,
         function=weather_conversation_function,
         metrics=METRICS,
-        project="april-11",
+        project=project_name,
     )
     print(f"Experiment completed with {len(results)} data points")

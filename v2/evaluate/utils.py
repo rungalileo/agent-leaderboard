@@ -83,7 +83,7 @@ class ConversationHistoryManager:
             elif msg.type == "system":
                 formatted += f"System: {msg.content}\n\n"
             elif msg.type == "human":
-                formatted += f"Human: {msg.content}\n\n"
+                formatted += f"User: {msg.content}\n\n"
             elif msg.type == "ai":
                 formatted += f"Assistant: {msg.content}\n\n"
         return formatted

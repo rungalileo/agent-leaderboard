@@ -7,76 +7,53 @@ import os
 import glob
 import argparse
 from dotenv import load_dotenv
+from tqdm import tqdm
+from pydantic import BaseModel, Field, ValidationError
 
 load_dotenv("../.env")
 
 MODEL = "claude-3-7-sonnet-20250219"
 
+
+class Persona(BaseModel):
+    name: str = Field(..., min_length=2)
+    age: int = Field(..., ge=18, le=100)
+    occupation: str = Field(..., min_length=5)
+    personality_traits: List[str] = Field(..., min_items=1, max_items=3)
+    tone: str = Field(..., pattern="^(formal|casual|friendly|professional|unprofessional)$")
+    detail_level: str = Field(..., pattern="^(brief|balanced|comprehensive)$")
+
+
 SYSTEM_PROMPT = """You are an expert in creating realistic user personas for testing AI chatbot systems.
 You excel at understanding how different types of people interact with AI assistants, their expectations, comfort levels, and behavioral patterns."""
 
 HUMAN_PROMPT = """## Task Description
-Generate {num_personas} detailed user personas representing different types of people who interact with AI chatbots. These personas should be domain-agnostic but will be used to test AI systems that have access to the following tools:
+Generate 1 detailed user persona representing a type of person who interacts with AI chatbots. This persona should be domain-agnostic but will be used to test AI systems that have access to the following tools:
 
 {tools_description}
 
-Each persona should represent a distinct type of AI chatbot user, with specific interaction patterns, expectations, and behaviors.
+The persona should represent a distinct type of AI chatbot user, with specific interaction patterns, expectations, and behaviors.
+
+{existing_personas_section}
 
 ## Output Format Requirements
-Your response must be a valid JSON array containing exactly {num_personas} persona objects. Each object must follow this structure:
-```json
-{{
-  "name": "Persona's full name",
-  "age": integer,
-  "occupation": "Current job or role",
-  "background": "Brief background story",
-  "personality_traits": ["trait1", "trait2", "trait3"],
-  "ai_interaction": {{
-    "comfort": "skeptical|cautious|comfortable|enthusiastic",
-    "tech_proficiency": "low|medium|high",
-    "learning_style": "experimental|methodical|cautious"
-  }},
-  "query_style": {{
-    "verbosity": "terse|concise|detailed|verbose",
-    "clarity": "vague|clear|precise"
-  }},
-  "error_response": {{
-    "patience": "frustrated|patient|adaptive",
-    "retry_willingness": "low|medium|high"
-  }},
-  "preferences": {{
-    "tone": "formal|casual|friendly|professional",
-    "detail_level": "brief|balanced|comprehensive",
-    "format": ["text", "lists", "structured"]
-  }}
-}}
-```
+Your response must be a valid JSON object (not an array) following this EXACT schema:
+
+{schema}
 
 ## Persona Design Guidelines:
-1. Core Characteristics:
-   - Create diverse personas across age, technical proficiency, and AI comfort levels
+   - Create a diverse persona across age, technical proficiency, and AI comfort levels
    - Include varied professional backgrounds and exposure to technology
    - Consider different learning styles and problem-solving approaches
-
-2. AI Interaction Patterns:
-   - Define how they typically phrase queries (verbosity, clarity)
-   - Specify their response to AI mistakes or limitations
-   - Consider their comfort level with AI systems
-
-3. Behavioral Aspects:
-   - How they handle errors and their patience level
-   - Their willingness to retry after failures
-   - Their preferred tone and detail level in communications
-
-4. Ensure personas:
-   - Are realistic and relatable
-   - Represent different user archetypes
+   - Make it realistic and relatable
+   - Represent a specific user archetype
    - Have distinct interaction patterns
    - Include both positive and challenging aspects
+   - IMPORTANT: Ensure this persona is distinctly different from any previously generated personas
 
 Consider how different personality traits and experiences would affect their interaction with AI chatbots.
 
-REMEMBER: Your response must be a single JSON array that can be parsed by json.loads(). Do not include any explanatory text or markdown formatting."""
+REMEMBER: Your response must be a single JSON object that exactly matches the schema above and can be parsed by json.loads(). Do not include any explanatory text or markdown formatting."""
 
 
 def load_tools(tools_path: str) -> Dict[str, List[dict]]:
@@ -108,6 +85,29 @@ def format_tools_description(tools: Dict[str, List[dict]]) -> str:
     return "\n".join(description)
 
 
+def format_existing_personas_section(existing_personas: List[dict]) -> str:
+    """Format existing personas into a readable section for the prompt."""
+    if not existing_personas:
+        return ""
+    
+    section = ["## Previously Generated Personas"]
+    section.append("To ensure diversity, here are the personas that have already been generated:")
+    section.append("")
+    
+    for i, persona in enumerate(existing_personas, 1):
+        section.append(f"**Persona {i}:** {persona['name']}")
+        section.append(f"- Age: {persona['age']}, Occupation: {persona['occupation']}")
+        section.append(f"- Personality: {', '.join(persona['personality_traits'])}")
+        section.append("")
+    
+    section.append("**CRITICAL:** Generate a persona that is significantly different from all the above personas in terms of:")
+    section.append("- Age group and life stage")
+    section.append("- Professional background and industry")
+    section.append("")
+    
+    return "\n".join(section)
+
+
 def clean_json_string(json_str: str) -> str:
     """Clean and validate JSON string before parsing."""
     # Remove any markdown code blocks
@@ -122,51 +122,8 @@ def clean_json_string(json_str: str) -> str:
     return json_str.strip()
 
 
-def validate_persona_schema(persona: dict) -> bool:
-    """Validate that a persona follows the required schema."""
-    required_fields = {
-        "name",
-        "age",
-        "occupation",
-        "background",
-        "personality_traits",
-        "ai_interaction",
-        "query_style",
-        "error_response",
-        "preferences",
-    }
-
-    if not all(field in persona for field in required_fields):
-        return False
-
-    if not isinstance(persona["personality_traits"], list):
-        return False
-
-    if not isinstance(persona["ai_interaction"], dict):
-        return False
-
-    if not isinstance(persona["query_style"], dict):
-        return False
-
-    if not isinstance(persona["error_response"], dict):
-        return False
-
-    if not isinstance(persona["preferences"], dict):
-        return False
-
-    # Validate AI interaction profile
-    ai_profile = persona["ai_interaction"]
-    if not all(
-        field in ai_profile
-        for field in ["comfort", "tech_proficiency", "learning_style"]
-    ):
-        return False
-
-    return True
-
-
-def generate_personas(tools: Dict[str, List[dict]], num_personas: int) -> List[dict]:
-    """Generate persona definitions using Claude."""
+def generate_personas(tools: Dict[str, List[dict]], num_personas: int, n_persona_per_iter: int = 5) -> List[dict]:
+    """Generate persona definitions using Claude with progress tracking and Pydantic validation."""
     chat = ChatAnthropic(model=MODEL)
 
     # Create the chat prompt template
@@ -176,48 +133,93 @@ def generate_personas(tools: Dict[str, List[dict]], num_personas: int) -> List[d
 
     # Format tools description
     tools_description = format_tools_description(tools)
+    
+    # Generate schema from Pydantic model
+    schema = Persona.model_json_schema()
+    schema_str = json.dumps(schema, indent=2)
 
-    # Format the prompt
-    formatted_prompt = prompt_template.format_messages(
-        tools_description=tools_description, num_personas=num_personas
-    )
+    personas = []
+    
+    # Calculate number of batches needed
+    num_batches = (num_personas + n_persona_per_iter - 1) // n_persona_per_iter
+    
+    # Generate personas in batches with progress bar
+    for batch_idx in tqdm(range(num_batches), desc="Generating persona batches", unit="batch"):
+        # Calculate how many personas to generate in this batch
+        start_idx = batch_idx * n_persona_per_iter
+        end_idx = min(start_idx + n_persona_per_iter, num_personas)
+        personas_in_batch = end_idx - start_idx
+        
+        tqdm.write(f"Batch {batch_idx + 1}/{num_batches}: Generating {personas_in_batch} personas...")
+        
+        # Generate each persona in the current batch
+        for i in range(personas_in_batch):
+            current_persona_idx = start_idx + i
+            max_retries = 10
+            retry_count = 0
+            persona_generated = False
+            
+            # Format existing personas section for this iteration
+            existing_personas_section = format_existing_personas_section(personas)
+            
+            while not persona_generated and retry_count < max_retries:
+                try:
+                    # Format the prompt with existing personas
+                    formatted_prompt = prompt_template.format_messages(
+                        tools_description=tools_description,
+                        existing_personas_section=existing_personas_section,
+                        schema=schema_str
+                    )
 
-    # Get the response from Claude
-    response = chat.invoke(formatted_prompt, temperature=0.7, max_tokens=4000)
+                    # Get the response from Claude
+                    response = chat.invoke(formatted_prompt, temperature=1.0, max_tokens=4000)
 
-    try:
-        # Clean and parse the JSON response
-        json_str = clean_json_string(response.content)
-        personas = json.loads(json_str)
+                    # Clean and parse the JSON response
+                    json_str = clean_json_string(response.content)
+                    persona_data = json.loads(json_str)
 
-        # Validate the response
-        if not isinstance(personas, list):
-            raise ValueError("Response is not a JSON array")
-        if len(personas) != num_personas:
-            raise ValueError(f"Expected {num_personas} personas, got {len(personas)}")
+                    # Validate using Pydantic model
+                    persona = Persona(**persona_data)
+                    
+                    # Convert back to dict for consistency with existing code
+                    personas.append(persona.model_dump())
+                    persona_generated = True
+                    
+                except json.JSONDecodeError as e:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        tqdm.write(f"    Retrying persona {current_persona_idx+1} (attempt {retry_count + 1}/{max_retries}): JSON parsing failed - {str(e)}")
+                    else:
+                        raise ValueError(f"Failed to parse JSON for persona {current_persona_idx+1} after {max_retries} attempts: {str(e)}")
+                        
+                except ValidationError as e:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        tqdm.write(f"    Retrying persona {current_persona_idx+1} (attempt {retry_count + 1}/{max_retries}): Schema validation failed - {str(e)}")
+                    else:
+                        raise ValueError(f"Failed to generate valid persona {current_persona_idx+1} after {max_retries} attempts: {str(e)}")
+                        
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        tqdm.write(f"    Retrying persona {current_persona_idx+1} (attempt {retry_count + 1}/{max_retries}): Unexpected error - {str(e)}")
+                    else:
+                        raise ValueError(f"Unexpected error generating persona {current_persona_idx+1} after {max_retries} attempts: {str(e)}")
+        
+        tqdm.write(f"  Completed batch {batch_idx + 1}: Generated {personas_in_batch} personas (Total: {len(personas)}/{num_personas})")
 
-        # Validate each persona's schema
-        for i, persona in enumerate(personas):
-            if not validate_persona_schema(persona):
-                raise ValueError(
-                    f"Persona at index {i} does not follow the required schema"
-                )
-
-        return personas
-    except json.JSONDecodeError as e:
-        raise ValueError(
-            f"Failed to parse JSON response: {e}\nResponse content: {json_str}"
-        )
-    except Exception as e:
-        raise ValueError(f"Error processing response: {str(e)}")
+    return personas
 
 
 def save_personas(
-    personas: List[dict], output_dir: str, name: str, overwrite: bool = False
+    personas: List[dict], domain: str, overwrite: bool = False
 ) -> str:
     """Save the generated personas to a JSON file."""
-    os.makedirs(output_dir, exist_ok=True)
-    file_path = os.path.join(output_dir, f"{name}.json")
+    # Create domain directory if it doesn't exist
+    domain_dir = os.path.join("../data", domain)
+    os.makedirs(domain_dir, exist_ok=True)
+    
+    file_path = os.path.join(domain_dir, "personas.json")
 
     if os.path.exists(file_path) and not overwrite:
         raise FileExistsError(f"File already exists: {file_path}")
@@ -230,17 +232,16 @@ def save_personas(
 
 
 if __name__ == "__main__":
-    # python personas.py --name banking --tools-file ../data/tools/banking.json
     parser = argparse.ArgumentParser(
         description="Generate user personas for testing AI tools using Claude"
     )
 
     # Required arguments
     parser.add_argument(
-        "--file-name",
+        "--domain",
         type=str,
         required=True,
-        help="Name for the persona set (used in output filename)",
+        help="Domain name (used for tools path and output filename)",
     )
 
     # Optional arguments with defaults
@@ -251,26 +252,13 @@ if __name__ == "__main__":
         help="Number of personas to generate (default: 3)",
     )
 
-    # Add tools file argument group
-    tools_group = parser.add_mutually_exclusive_group()
-    tools_group.add_argument(
-        "--tools-file",
-        type=str,
-        help="Single JSON file containing tool definitions",
-    )
-    tools_group.add_argument(
-        "--tools-dir",
-        type=str,
-        default="data/tools",
-        help="Directory containing tool definition JSON files (default: data/tools)",
+    parser.add_argument(
+        "--n-persona-per-iter",
+        type=int,
+        default=5,
+        help="Number of personas to generate per iteration/batch (default: 5)",
     )
 
-    parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="data/personas",
-        help="Output directory for saving personas (default: data/personas)",
-    )
     parser.add_argument(
         "--overwrite", action="store_true", help="Overwrite existing file if it exists"
     )
@@ -278,17 +266,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        # Load existing tools from either file or directory
-        tools_path = args.tools_file if args.tools_file else args.tools_dir
+        # Load tools from data/{domain}/tools.json
+        tools_path = os.path.join("../data", args.domain, "tools.json")
         tools = load_tools(tools_path)
         if not tools:
             raise ValueError(f"No tool definitions found in {tools_path}")
 
         # Generate personas
-        personas = generate_personas(tools, args.num_personas)
+        personas = generate_personas(tools, args.num_personas, args.n_persona_per_iter)
 
         # Save personas
-        file_path = save_personas(personas, args.output_dir, args.name, args.overwrite)
+        file_path = save_personas(personas, args.domain, args.overwrite)
 
         print(f"Successfully generated and saved {args.num_personas} personas")
         print(f"Personas saved to: {file_path}")
@@ -300,4 +288,4 @@ if __name__ == "__main__":
         print(f"Error: {str(e)}")
         parser.print_help()
 
-# python personas.py --file-name banking.json --num-personas 25 --tools-file ../data/tools/banking.json --overwrite
+# python personas.py --domain banking --num-personas 5 --overwrite

@@ -300,7 +300,7 @@ class AgentSimulation:
                     # Get user message
                     if conversation_history[message_index].get("role") == "user":
                         workflow_input += f"=== TURN {current_turn} ===\n\n"
-                        workflow_input += f"Human: {conversation_history[message_index].get('content')}\n\n"
+                        workflow_input += f"User: {conversation_history[message_index].get('content')}\n\n"
                         message_index += 1
                     else:
                         message_index += 1
@@ -323,7 +323,7 @@ class AgentSimulation:
                     and conversation_history[message_index].get("role") == "user"
                 ):
                     workflow_input += f"=== TURN {current_turn} ===\n\n"
-                    workflow_input += f"Human: {conversation_history[message_index].get('content')}\n\n"
+                    workflow_input += f"User: {conversation_history[message_index].get('content')}\n\n"
                     current_turn += 1
 
                 # Add current turn with the input
@@ -333,7 +333,7 @@ class AgentSimulation:
                     or conversation_history[-1].get("content") != input_message
                 ):
                     workflow_input += f"=== TURN {turn_count} ===\n\n"
-                    workflow_input += f"Human: {input_message}\n\n"
+                    workflow_input += f"User: {input_message}\n\n"
 
                 # Store workflow input for next turn
                 all_workflow_inputs.append(workflow_input)
@@ -486,6 +486,7 @@ def create_experiment_runner(
     category: str,
     verbose: bool = False,
     log_to_galileo: bool = False,
+    results_collector: list = None,
 ):
     """
     Create a runner function for Galileo experiments.
@@ -496,6 +497,7 @@ def create_experiment_runner(
         category: The category of scenarios to run
         verbose: Whether to print verbose logs
         log_to_galileo: Whether to log to Galileo
+        results_collector: List to collect simulation results
 
     Returns:
         A function that can be passed to run_experiment
@@ -513,22 +515,6 @@ def create_experiment_runner(
         """
         # Extract scenario index from input
         scenario_idx = input_data.get("scenario_idx", 0)
-
-        # Print runner configuration
-        runner_config = (
-            f"{Fore.CYAN}Runner Configuration:{Style.RESET_ALL}\n"
-            f"{Fore.CYAN}Agent Model:{Style.RESET_ALL} {agent_model}\n"
-            f"{Fore.CYAN}Domain:{Style.RESET_ALL} {domain}\n"
-            f"{Fore.CYAN}Category:{Style.RESET_ALL} {category}\n"
-            f"{Fore.CYAN}Scenario Index:{Style.RESET_ALL} {scenario_idx}\n"
-            f"{Fore.CYAN}Log to Galileo:{Style.RESET_ALL} {log_to_galileo}\n"
-            f"{Fore.CYAN}Verbose:{Style.RESET_ALL} {verbose}\n"
-            f"{Fore.CYAN}Parallel Tool Execution:{Style.RESET_ALL} Enabled"
-        )
-        print(log_section("RUN CONFIGURATION", runner_config, style=Fore.YELLOW))
-
-        # Indicate progress
-        print(f"Running scenario {scenario_idx}...")
 
         # Initialize simulation
         simulation = AgentSimulation(
@@ -550,7 +536,14 @@ def create_experiment_runner(
             first_message = ""
 
         # Run the simulation and get results
-        results = simulation.run_simulation(scenario_idx=scenario_idx)
+        simulation_info = simulation.run_simulation(scenario_idx=scenario_idx)
+
+        # Add input data to simulation_info for complete record
+        simulation_info["scenario_idx"] = scenario_idx
+
+        # Collect results if collector is provided
+        if results_collector is not None:
+            results_collector.append(simulation_info)
 
         logger.info(
             log_section(
@@ -561,7 +554,7 @@ def create_experiment_runner(
         )
 
         # Return results as JSON string like in simple_test.py
-        return json.dumps(results)
+        return json.dumps(simulation_info)
 
     return runner
 
@@ -594,8 +587,7 @@ def run_simulation_experiments(
     Returns:
         Dictionary of experiment results
     """
-    formatted_results = {}
-
+    
     # Format model names for display
     model_names = ", ".join([m.split("/")[-1] if "/" in m else m for m in models])
 
@@ -665,10 +657,10 @@ def run_simulation_experiments(
         if add_timestamp:
             timestamp = int(time.time())
             experiment_name = (
-                f"{model.replace('/', '-')}-{domain}-{category}-{timestamp}"
+                f"{domain}-{category}-{timestamp}"
             )
         else:
-            experiment_name = f"{model.replace('/', '-')}-{domain}-{category}"
+            experiment_name = f"{domain}-{category}"
 
         # Check if experiment already exists
         project_id = get_project(name=current_project_name).id
@@ -701,6 +693,9 @@ def run_simulation_experiments(
             log_section("EXPERIMENT CONFIGURATION", exp_config, style=Fore.YELLOW)
         )
 
+        # Create results collector for this experiment
+        results_collector = []
+
         # Create the runner function for this specific combination
         runner = create_experiment_runner(
             agent_model=model,
@@ -708,6 +703,7 @@ def run_simulation_experiments(
             category=category,
             verbose=verbose,
             log_to_galileo=log_to_galileo,
+            results_collector=results_collector,
         )
 
         # Get or create dataset
@@ -763,17 +759,25 @@ def run_simulation_experiments(
             metrics=metrics,
         )
         exp_data = result["experiment"]
-        formatted_results[exp_data.name] = {
-            "model_name": model,
-            "category": category,
-            "domain": domain,
-            "project_id": exp_data.project_id,
-            "id": exp_data.id,
-            "name": exp_data.name,
-            "created_at": str(exp_data.created_at),
-            "link": result["link"],
-            "message": result["message"],
-        }
+
+        # Save results to parquet file
+        if results_collector:
+            # Ensure results directory exists
+            results_dir = f"../data/results/{current_project_name}"
+            os.makedirs(results_dir, exist_ok=True)
+            
+            # Convert results to DataFrame and save
+            df = pd.DataFrame(results_collector)
+            parquet_path = os.path.join(results_dir, f"{experiment_name}.parquet")
+            df.to_parquet(parquet_path, index=False)
+            
+            logger.info(
+                log_section(
+                    "RESULTS SAVED",
+                    f"Saved {len(results_collector)} results to {parquet_path}",
+                    style=Fore.GREEN,
+                )
+            )
 
         # Print experiment completion details
         exp_result_info = (
@@ -781,7 +785,8 @@ def run_simulation_experiments(
             f"{Fore.CYAN}Experiment ID:{Style.RESET_ALL} {exp_data.id}\n"
             f"{Fore.CYAN}Project ID:{Style.RESET_ALL} {exp_data.project_id}\n"
             f"{Fore.CYAN}Result Link:{Style.RESET_ALL} {result['link']}\n"
-            f"{Fore.CYAN}Message:{Style.RESET_ALL} {result['message']}"
+            f"{Fore.CYAN}Message:{Style.RESET_ALL} {result['message']}\n"
+            f"{Fore.CYAN}Results File:{Style.RESET_ALL} {experiment_name}.parquet"
         )
         logger.info(
             log_section("EXPERIMENT COMPLETE", exp_result_info, style=Fore.YELLOW)
@@ -790,70 +795,9 @@ def run_simulation_experiments(
     # Print overall experiment results summary
     logger.info(log_header("ALL EXPERIMENTS COMPLETED", style=Fore.MAGENTA))
     summary_info = (
-        f"{Fore.CYAN}Total Experiments:{Style.RESET_ALL} {len(formatted_results)}\n"
         f"{Fore.CYAN}Models Tested:{Style.RESET_ALL} {model_names}\n"
         f"{Fore.CYAN}Domains Tested:{Style.RESET_ALL} {', '.join(domains)}\n"
-        f"{Fore.CYAN}Categories Tested:{Style.RESET_ALL} {', '.join(categories)}"
+        f"{Fore.CYAN}Categories Tested:{Style.RESET_ALL} {', '.join(categories)}\n"
+        f"{Fore.CYAN}Results Saved:{Style.RESET_ALL} ../data/results/"
     )
     print(log_section("EXPERIMENT SUMMARY", summary_info, style=Fore.MAGENTA))
-
-    # Save results to CSV files organized by model name
-    save_results_to_csv(formatted_results)
-
-    return formatted_results
-
-
-def save_results_to_csv(formatted_results: Dict[str, Dict[str, Any]]):
-    """
-    Save formatted experiment results to CSV files organized by model name.
-
-    Args:
-        formatted_results: Dictionary of experiment results
-    """
-    # Create experiments directory if it doesn't exist
-    os.makedirs("../data/experiments", exist_ok=True)
-
-    # Group results by model name
-    model_results = {}
-    for exp_name, result in formatted_results.items():
-        # Extract model name from experiment name (format: model-domain-category-timestamp)
-        model_name = result["model_name"]
-
-        if model_name not in model_results:
-            model_results[model_name] = []
-
-        # Add this result to the model's results list
-        result_row = {
-            "domain": result["domain"],
-            "category": result["category"],
-            "link": result["link"],
-            "experiment_name": exp_name,
-            "project_id": result["project_id"],
-            "experiment_id": result["id"],
-            "created_at": result["created_at"],
-            "message": result["message"],
-        }
-        model_results[model_name].append(result_row)
-
-    # Save each model's results to its own CSV file
-    for model_name, results in tqdm(
-        model_results.items(), desc="Saving results to CSV"
-    ):
-        csv_path = f"../data/experiments/{model_name}.csv"
-        df = pd.DataFrame(results)
-
-        # Check if file exists and append if it does
-        if os.path.exists(csv_path):
-            existing_df = pd.read_csv(csv_path)
-            # Combine with new results
-            combined_df = pd.concat([existing_df, df], ignore_index=True)
-            # Remove duplicates based on experiment_id
-            combined_df = combined_df.drop_duplicates(
-                subset=["experiment_id"], keep="last"
-            )
-            combined_df.to_csv(csv_path, index=False)
-            logger.info(f"Updated results for {model_name} in {csv_path}")
-        else:
-            # Create new file
-            df.to_csv(csv_path, index=False)
-            logger.info(f"Saved results for {model_name} to {csv_path}")

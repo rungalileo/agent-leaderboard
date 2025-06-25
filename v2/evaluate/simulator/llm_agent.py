@@ -286,7 +286,7 @@ Response: {json.dumps(result['response'], indent=2)}
 
             # For Galileo workflow context
             workflow_input = (
-                f"=== TURN {self.current_turn} ===\n\nINPUT: Human: {user_message}"
+                f"=== TURN {self.current_turn} ===\n\nINPUT: User: {user_message}"
             )
             self.workflow_context["inputs"].append(workflow_input)
 
