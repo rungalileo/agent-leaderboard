@@ -1,177 +1,75 @@
 # Agent Leaderboard
 
 <p align="center">
-  <img src="images/blog_cover.png" />
+  <img src="v1/images/blog_cover.png" />
 </p>
 
-<div align="center">
+A comprehensive evaluation framework for AI agents and their tool-calling capabilities across real-world business scenarios.
 
 [![Leaderboard](https://img.shields.io/badge/🤗%20View-Leaderboard-blue)](https://huggingface.co/spaces/galileo-ai/agent-leaderboard)
 [![Blog](https://img.shields.io/badge/📖%20Read-Blog-green)](https://galileo.ai/blog/agent-leaderboard)
 [![Dataset](https://img.shields.io/badge/🔍%20Explore-Dataset-orange)](https://huggingface.co/datasets/galileo-ai/agent-leaderboard)
 [![Free Agent Evals](https://img.shields.io/badge/📊%20Agent-Evals-yellow)](https://www.galileo.ai/agentic-evaluations)
 
-</div>
-
 ## Overview
 
-The Agent Leaderboard evaluates language models' ability to effectively utilize tools in complex scenarios. With major tech CEOs predicting 2025 as a pivotal year for AI agents, we built this leaderboard to answer: **"How do AI agents perform in real-world business scenarios?"**
+This repository evaluates how AI agents perform in real-world business scenarios, providing insights into language models' tool-calling capabilities.
 
-Get latest update of the [leaderboard](https://huggingface.co/spaces/galileo-ai/agent-leaderboard) on Hugging Face Spaces. For more info, checkout the [blog post](https://galileo.ai/blog/agent-leaderboard) for a detailed overview of our evaluation methodology.
+**Two versions available:**
+- **v1**: Live production leaderboard with 17+ models across established benchmarks
+- **v2**: Enhanced framework with synthetic dataset generation (coming soon)
+
+## Version 1 (Current)
+
+**Status**: ✅ Live and actively maintained
+
+Evaluates language models using standardized benchmarks and the Tool Selection Quality (TSQ) metric.
+
+**Features:**
+- [Live leaderboard](https://huggingface.co/spaces/galileo-ai/agent-leaderboard) on Hugging Face Spaces
+- 17+ models evaluation across 4 major datasets (BFCL, τ-bench, xLAM, ToolACE)
+- Multi-domain coverage: Mathematics, Entertainment, Education, Retail, Airline, and 390+ API domains
 
 <p align="center">
-  <img src="images/leaderboard.png" />
+  <img src="v1/images/ranking.png" />
 </p>
 
-<p align="center">
-  <a href="https://huggingface.co/spaces/galileo-ai/agent-leaderboard">https://huggingface.co/spaces/galileo-ai/agent-leaderboard</a>
+[→ View v1 Documentation](v1/README.md)
 
-<p align="center">
-  <img src="images/overview.png" />
-</p>
+## Version 2 (Coming Soon)
 
-### Methodology
+**Status**: 🔬 In development
 
-Our evaluation process follows a systematic approach:
+Revolutionary approach using synthetic dataset generation and agent-user conversation simulation.
 
-**Model Selection**: Curated diverse set of leading language models (20 private, 8 open-source)  
-**Agent Configuration**: Standardized system prompt and consistent tool access  
-**Metric Definition**: [Tool Selection Quality (TSQ)](https://docs.galileo.ai/galileo/gen-ai-studio-products/galileo-guardrail-metrics/tool-selection-quality#tool-selection-quality) as primary metric  
-**Dataset Curation**: Strategic sampling from established benchmarks  
-**Scoring System**: Equally weighted average across datasets
+**New Capabilities:**
+- Generate domain-specific tools, personas, and scenarios
+- Simulate realistic conversations between AI agents and users
+- Support for Banking, Healthcare, Investment, Telecom, Automobile, Insurance domains
+- Advanced evaluation categories: Adaptive Tool Use, Scope Management, Empathetic Resolution
 
-## Model Rankings
+**Key Improvements:**
+- Scalable testing with unlimited scenarios
+- Multi-turn conversations with evolving requirements
+- Enhanced metrics beyond basic tool selection
 
-Current standings across different models:
+[→ View v2 Documentation](v2/README.md)
 
-<p align="center">
-  <img src="images/ranking.png" />
-</p>
+## Use Cases
 
-## Development Guidelines
+- **Model Developers**: Benchmark language models against industry standards
+- **Enterprise Teams**: Evaluate agents for specific business domains  
+- **Researchers**: Study tool-calling capabilities and agent behavior
+- **Product Teams**: Validate agent performance before deployment
 
-Key considerations for implementing AI agents:
-
-<p align="center">
-  <img src="images/implications.png" />
-</p>
-
-## Key Insights
-
-Analysis of model performance and capabilities:
-
-<p align="center">
-  <img src="images/insights.png" />
-</p>
-
-## Tool Selection Complexity
-
-Understanding the nuances of tool selection and usage across different scenarios:
-
-<p align="center">
-  <img src="images/complexity_of_tool_calling.png" />
-</p>
-
-## Dataset Structure
-
-Comprehensive evaluation across multiple domains and interaction types by leveraging diverse datasets:
-
-**BFCL**: Mathematics, Entertainment, Education, and Academic Domains  
-**τ-bench**: Retail and Airline Industry Scenarios  
-**xLAM**: Cross-domain Data Generation (21 Domains)  
-**ToolACE**: API Interactions across 390 Domains  
-
-<p align="center">
-  <img src="images/datasets.png" />
-</p>
-
-## Evaluation
-
-Our evaluation metric [Tool Selection Quality (TSQ)](https://docs.galileo.ai/galileo/gen-ai-studio-products/galileo-guardrail-metrics/tool-selection-quality#tool-selection-quality) assesses how well models select and use tools based on real-world requirements:
-
-<p align="center">
-  <img src="images/evaluating_agents.png" />
-</p>
-
-### Implementation
-
-Here's how we evaluate the models using the Tool Selection Quality (TSQ) metric:
-
-```python
-import promptquality as pq
-
-# Initialize evaluation handler with TSQ scorer
-chainpoll_tool_selection_scorer = pq.CustomizedChainPollScorer(
-    scorer_name=pq.CustomizedScorerName.tool_selection_quality,
-    model_alias=pq.Models.gpt_4o,
-)
-
-evaluate_handler = pq.GalileoPromptCallback(
-    project_name=project_name,
-    run_name=run_name,
-    scorers=[chainpoll_tool_selection_scorer],
-)
-
-# Configure LLM with zero temperature for consistent evaluation
-llm = llm_handler.get_llm(model, temperature=0.0, max_tokens=4000)
-
-# System prompt for standardized tool usage
-system_msg = {
-    "role": "system",
-    "content": """Your job is to use the given tools to answer the query of human. 
-                 If there is no relevant tool then reply with "I cannot answer the question with given tools". 
-                 If tool is available but sufficient information is not available, then ask human to get the same. 
-                 You can call as many tools as you want. Use multiple tools if needed. 
-                 If the tools need to be called in a sequence then just call the first tool."""
-}
-
-# Run evaluation
-for row in df.itertuples():
-    chain = llm.bind_tools(tools)
-    outputs.append(
-        chain.invoke(
-            [system_msg, *row.conversation], 
-            config=dict(callbacks=[evaluate_handler])
-        )
-    )
-
-evaluate_handler.finish()
-```
-
-## Repo Structure
+## Repository Structure
 
 ```
 agent-leaderboard/
-├── data/                   # Data storage directory
-├── datasets/ 
-│   ├── bfcl.ipynb          # BFCL data conversion
-│   ├── tau.ipynb           # Tau benchmark data conversion
-│   ├── toolace.ipynb       # ToolACE data conversion
-│   └── xlam.ipynb          # XLAM data conversion
-├── evaluate/ 
-│   ├── get_results.ipynb   # Results aggregation
-│   ├── llm_handler.py      # LLM initialization handler
-│   ├── test_r1.ipynb       # Test R1
-│   └── tool_call_exp.ipynb # Tool calling experiment runner
-├── .env                    # Environment variables for API keys
-├── LICENSE 
-├── README.md 
-└── requirements.txt        # Dependencies
+├── v1/          # Production leaderboard (current)
+├── v2/          # Enhanced framework (upcoming)
+└── README.md    # This file
 ```
-
-## Acknowledgements
-
-We extend our sincere gratitude to the creators of the benchmark datasets that made this evaluation framework possible:
-
-- [**BFCL**](https://gorilla.cs.berkeley.edu/leaderboard.html): Thanks to the Berkeley AI Research team for their comprehensive dataset evaluating function calling capabilities.
-
-- [**τ-bench**](https://github.com/sierra-research/tau-bench): Thanks to the Sierra Research team for developing this benchmark focusing on real-world tool use scenarios.
-
-- [**xLAM**](https://www.salesforce.com/blog/xlam-large-action-models/): Thanks to the Salesforce AI Research team for their extensive Large Action Model dataset covering 21 domains.
-
-- [**ToolACE**](https://arxiv.org/abs/2409.00920): Thanks to the team for their comprehensive API interaction dataset spanning 390 domains.
-
-These datasets have been instrumental in creating a comprehensive evaluation framework for tool-calling capabilities in language models.
 
 ## Citation
 
@@ -183,3 +81,8 @@ These datasets have been instrumental in creating a comprehensive evaluation fra
     publisher = {Galileo.ai},
     howpublished = "\url{https://huggingface.co/spaces/galileo-ai/agent-leaderboard}"
 }
+```
+
+---
+
+*Advancing AI agent evaluation through comprehensive benchmarking and innovative simulation techniques.*
