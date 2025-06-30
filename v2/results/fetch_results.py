@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 
 load_dotenv("../.env")
 
-MIN_RESPONSES = 80
+MIN_RESPONSES = 70
 
 # Model metadata with costs and vendor information
 model_metadata = {
@@ -157,39 +157,42 @@ def process_experiment(exp, model):
         if hasattr(exp, 'aggregate_metrics') and exp.aggregate_metrics and hasattr(exp.aggregate_metrics, 'additional_properties'):
             if "total_responses" in exp.aggregate_metrics.additional_properties:
                 if exp.aggregate_metrics.additional_properties["total_responses"] > MIN_RESPONSES:
-                    # Use the same aggregate_metrics object for getting the metrics
+                    # Extract model name after first '/' if it exists
+                    model_name = model.split('/')[-1] if '/' in model else model
+                    
+                    # Get metadata for this model
+                    metadata = model_metadata.get(model_name, {})
+                    
+                    # Use model_name from metadata if available, otherwise use processed model_name
+                    final_model_name = metadata.get('model_name', model_name).lower()
+                    
+                    # Get tool selection quality if available, otherwise set to None
+                    tool_selection_quality = None
                     if "average_tool_selection_quality" in exp.aggregate_metrics.additional_properties:
-                        # Extract model name after first '/' if it exists
-                        model_name = model.split('/')[-1] if '/' in model else model
-                        
-                        # Get metadata for this model
-                        metadata = model_metadata.get(model_name, {})
-                        
-                        # Use model_name from metadata if available, otherwise use processed model_name
-                        final_model_name = metadata.get('model_name', model_name).lower()
-                        
-                        result = {
-                            'experiment_name': exp.name, 
-                            'total_responses': exp.aggregate_metrics.additional_properties['total_responses'],
-                            'average_action_completion': round(exp.aggregate_metrics.additional_properties['average_agentic_session_success'], 2),
-                            'average_tool_selection_quality': round(exp.aggregate_metrics.additional_properties['average_tool_selection_quality'], 2), 
-                            'model': final_model_name, 
-                            'category': category
-                        }
-                        
-                        # Add metadata if available
-                        if metadata:
-                            result.update({
-                                'model_type': metadata.get('model_type'),
-                                'output_type': metadata.get('output_type'), 
-                                'vendor': metadata.get('vendor'),
-                                'input_cost_per_m_token': metadata.get('input_cost_per_m_token'),
-                                'output_cost_per_m_token': metadata.get('output_cost_per_m_token')
-                            })
-                        
-                        return result
+                        tool_selection_quality = round(exp.aggregate_metrics.additional_properties['average_tool_selection_quality'], 2)
                     else:
-                        print(f"average_tool_selection_quality not found in experiment {exp.name}")
+                        print(f"average_tool_selection_quality not found in experiment {exp.name}, proceeding without it")
+                    
+                    result = {
+                        'experiment_name': exp.name, 
+                        'total_responses': exp.aggregate_metrics.additional_properties['total_responses'],
+                        'average_action_completion': round(exp.aggregate_metrics.additional_properties['average_agentic_session_success'], 2),
+                        'average_tool_selection_quality': tool_selection_quality, 
+                        'model': final_model_name, 
+                        'category': category
+                    }
+                    
+                    # Add metadata if available
+                    if metadata:
+                        result.update({
+                            'model_type': metadata.get('model_type'),
+                            'output_type': metadata.get('output_type'), 
+                            'vendor': metadata.get('vendor'),
+                            'input_cost_per_m_token': metadata.get('input_cost_per_m_token'),
+                            'output_cost_per_m_token': metadata.get('output_cost_per_m_token')
+                        })
+                    
+                    return result
                 else:
                     print(f"Experiment {exp.name} has only {exp.aggregate_metrics.additional_properties['total_responses']} responses (< {MIN_RESPONSES})")
             else:
@@ -328,17 +331,23 @@ if __name__ == "__main__":
             # Get metadata for the first row (all rows for same model should have same metadata)
             first_row = model_df.iloc[0]
             
-            # Calculate Model Avg (average across all experiments for this model)
+            # Calculate AC Avg (average across all experiments for this model)
             model_avg = model_df['average_action_completion'].mean()
+            
+            # Calculate Tool Selection Quality average
+            model_tsq_avg = model_df['average_tool_selection_quality'].mean()
             
             # Calculate domain-specific averages
             domain_scores = {}
+            domain_tsq_scores = {}
             for domain in domains:
                 domain_experiments = model_df[model_df['experiment_name'].str.startswith(domain)]
                 if len(domain_experiments) > 0:
                     domain_scores[domain] = domain_experiments['average_action_completion'].mean()
+                    domain_tsq_scores[domain] = domain_experiments['average_tool_selection_quality'].mean()
                 else:
                     domain_scores[domain] = None
+                    domain_tsq_scores[domain] = None
             
             # Create leaderboard row
             leaderboard_row = {
@@ -346,14 +355,20 @@ if __name__ == "__main__":
                 'Model Type': first_row.get('model_type', ''),
                 'Model Output Type': first_row.get('output_type', ''),
                 'Vendor': first_row.get('vendor', ''),
-                'Input cost per M token': first_row.get('input_cost_per_m_token', ''),
-                'Output cost per M token': first_row.get('output_cost_per_m_token', ''),
-                'Model Avg': round(model_avg, 2) if pd.notna(model_avg) else None,
-                'Banking': round(domain_scores['banking'], 2) if domain_scores['banking'] is not None and pd.notna(domain_scores['banking']) else None,
-                'Investment': round(domain_scores['investment'], 2) if domain_scores['investment'] is not None and pd.notna(domain_scores['investment']) else None,
-                'Telecom': round(domain_scores['telecom'], 2) if domain_scores['telecom'] is not None and pd.notna(domain_scores['telecom']) else None,
-                'Healthcare': round(domain_scores['healthcare'], 2) if domain_scores['healthcare'] is not None and pd.notna(domain_scores['healthcare']) else None,
-                'Insurance': round(domain_scores['insurance'], 2) if domain_scores['insurance'] is not None and pd.notna(domain_scores['insurance']) else None
+                '$/M input token': first_row.get('input_cost_per_m_token', ''),
+                '$/M output token': first_row.get('output_cost_per_m_token', ''),
+                'AC Avg': round(model_avg, 2) if pd.notna(model_avg) else None,
+                'TSQ Avg': round(model_tsq_avg, 2) if pd.notna(model_tsq_avg) else None,
+                'Banking AC': round(domain_scores['banking'], 2) if domain_scores['banking'] is not None and pd.notna(domain_scores['banking']) else None,
+                'Banking TSQ': round(domain_tsq_scores['banking'], 2) if domain_tsq_scores['banking'] is not None and pd.notna(domain_tsq_scores['banking']) else None,
+                'Investment AC': round(domain_scores['investment'], 2) if domain_scores['investment'] is not None and pd.notna(domain_scores['investment']) else None,
+                'Investment TSQ': round(domain_tsq_scores['investment'], 2) if domain_tsq_scores['investment'] is not None and pd.notna(domain_tsq_scores['investment']) else None,
+                'Telecom AC': round(domain_scores['telecom'], 2) if domain_scores['telecom'] is not None and pd.notna(domain_scores['telecom']) else None,
+                'Telecom TSQ': round(domain_tsq_scores['telecom'], 2) if domain_tsq_scores['telecom'] is not None and pd.notna(domain_tsq_scores['telecom']) else None,
+                'Healthcare AC': round(domain_scores['healthcare'], 2) if domain_scores['healthcare'] is not None and pd.notna(domain_scores['healthcare']) else None,
+                'Healthcare TSQ': round(domain_tsq_scores['healthcare'], 2) if domain_tsq_scores['healthcare'] is not None and pd.notna(domain_tsq_scores['healthcare']) else None,
+                'Insurance AC': round(domain_scores['insurance'], 2) if domain_scores['insurance'] is not None and pd.notna(domain_scores['insurance']) else None,
+                'Insurance TSQ': round(domain_tsq_scores['insurance'], 2) if domain_tsq_scores['insurance'] is not None and pd.notna(domain_tsq_scores['insurance']) else None
             }
             
             leaderboard_data.append(leaderboard_row)
@@ -361,8 +376,8 @@ if __name__ == "__main__":
         # Create leaderboard DataFrame
         leaderboard_df = pd.DataFrame(leaderboard_data)
         
-        # Sort by Model Avg column (descending - highest scores first)
-        leaderboard_df = leaderboard_df.sort_values('Model Avg', ascending=False)
+        # Sort by AC Avg column (descending - highest scores first)
+        leaderboard_df = leaderboard_df.sort_values('AC Avg', ascending=False)
         
         # Save leaderboard to CSV
         leaderboard_df.to_csv("../data/leaderboard.csv", index=False)
