@@ -1,6 +1,7 @@
 import argparse
 import multiprocessing
 import os
+import random
 import itertools
 from typing import List, Tuple
 from simulation import run_simulation_experiments
@@ -59,28 +60,7 @@ def run_experiment_worker(args: Tuple):
     )
 
 
-def create_experiment_batches(models, domains, categories, max_processes):
-    """
-    Create batches of experiments to run in parallel.
 
-    Args:
-        models: List of models to evaluate
-        domains: List of domains to evaluate
-        categories: List of categories to evaluate
-        max_processes: Maximum number of parallel processes
-
-    Returns:
-        List of experiment batches, where each batch contains experiments to run in parallel
-    """
-    # Create all combinations of model, domain, category
-    all_combinations = list(itertools.product(models, domains, categories))
-
-    # Divide into batches based on max_processes
-    batches = []
-    for i in range(0, len(all_combinations), max_processes):
-        batches.append(all_combinations[i : i + max_processes])
-
-    return batches
 
 
 def main():
@@ -99,8 +79,8 @@ def main():
     parser.add_argument(
         "--domains",
         type=str,
-        default="banking",
-        required=True,
+        default="banking,telecom,healthcare,insurance,investment",
+        required=False,
         help="Comma-separated list of domains to evaluate (e.g., 'banking,healthcare')",
     )
 
@@ -108,7 +88,7 @@ def main():
         "--categories",
         type=str,
         default="adaptive_tool_use",
-        required=True,
+        required=False,
         help="Comma-separated list of categories to evaluate (e.g., 'tool_coordination,error_handling')",
     )
 
@@ -149,10 +129,10 @@ def main():
     )
 
     parser.add_argument(
-        "--max-processes",
+        "--max-processes-per-model",
         type=int,
-        default=5,
-        help="Maximum number of parallel processes to run",
+        default=2,
+        help="Maximum number of parallel processes per model",
     )
 
     parser.add_argument(
@@ -171,6 +151,9 @@ def main():
     categories = parse_list_arg(args.categories)
     metrics = parse_list_arg(args.metrics)
 
+    # Calculate max processes based on number of models and max processes per model
+    max_processes = len(models) * args.max_processes_per_model
+
     if args.verbose:
         print(f"Running parallel experiments with:")
         print(f"  Models: {models}")
@@ -181,7 +164,8 @@ def main():
         print(f"  Log to Galileo: {args.log_to_galileo}")
         print(f"  Add timestamp to experiment name: {args.add_timestamp}")
         print(f"  Parallel tool execution: Enabled")
-        print(f"  Max parallel processes: {args.max_processes}")
+        print(f"  Max processes per model: {args.max_processes_per_model}")
+        print(f"  Total max parallel processes: {max_processes}")
         print(f"  Parallel mode: {args.parallel_mode}")
         if args.dataset_name:
             print(f"  Dataset: {args.dataset_name}")
@@ -192,7 +176,7 @@ def main():
     if args.parallel_mode == "by_model":
         # Run each model in parallel (with all domain/category combinations)
         with multiprocessing.Pool(
-            processes=min(len(models), args.max_processes)
+            processes=min(len(models), max_processes)
         ) as pool:
             worker_args = [
                 (
@@ -214,7 +198,7 @@ def main():
     elif args.parallel_mode == "by_domain":
         # Run each domain in parallel (with all model/category combinations)
         with multiprocessing.Pool(
-            processes=min(len(domains), args.max_processes)
+            processes=min(len(domains), max_processes)
         ) as pool:
             worker_args = [
                 (
@@ -236,7 +220,7 @@ def main():
     elif args.parallel_mode == "by_category":
         # Run each category in parallel (with all model/domain combinations)
         with multiprocessing.Pool(
-            processes=min(len(categories), args.max_processes)
+            processes=min(len(categories), max_processes)
         ) as pool:
             worker_args = [
                 (
@@ -255,40 +239,30 @@ def main():
 
             pool.map(run_experiment_worker, worker_args)
 
-    else:  # "all" - run all combinations in parallel with batching
-        # Create batches of experiments to run
-        batches = create_experiment_batches(
-            models, domains, categories, args.max_processes
-        )
+    else:  # "all" - run all combinations in parallel
+        # Create all experiment combinations
+        all_combinations = list(itertools.product(models, domains, categories))
+        random.shuffle(all_combinations)
+        
+        # Prepare worker args for all combinations
+        worker_args = [
+            (
+                model,
+                [domain],
+                [category],
+                args.dataset_name,
+                args.project_name,
+                metrics,
+                args.verbose,
+                args.log_to_galileo,
+                args.add_timestamp,
+            )
+            for model, domain, category in all_combinations
+        ]
 
-        for batch_idx, batch in enumerate(batches):
-            print(f"Running batch {batch_idx + 1}/{len(batches)}")
-            processes = []
-
-            for model, domain, category in batch:
-                # Prepare worker args
-                worker_args = (
-                    model,
-                    [domain],
-                    [category],
-                    args.dataset_name,
-                    args.project_name,
-                    metrics,
-                    args.verbose,
-                    args.log_to_galileo,
-                    args.add_timestamp,
-                )
-
-                # Create and start process
-                p = multiprocessing.Process(
-                    target=run_experiment_worker, args=(worker_args,)
-                )
-                processes.append(p)
-                p.start()
-
-            # Wait for all processes to complete
-            for p in processes:
-                p.join()
+        # Use multiprocessing.Pool to maintain constant number of running processes
+        with multiprocessing.Pool(processes=max_processes) as pool:
+            pool.map(run_experiment_worker, worker_args)
 
     end_time = time.time()
     elapsed_time = end_time - start_time
@@ -298,3 +272,10 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Example command:
+# uv run run_parallel_experiments.py \
+#   --models "mistral-small-2506" \
+#   --categories adaptive_tool_use \
+#   --domains "investment" \
+#   --log-to-galileo

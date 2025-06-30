@@ -2,6 +2,7 @@ import time
 import json
 from typing import Dict, List, Any, Tuple
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from llm_handler import LLMHandler
 import sys, os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -104,11 +105,12 @@ class LLMAgent:
         # Format the tool results for the prompt
         tool_results_text = ""
         for result in tool_results:
-            tool_results_text += f"""
-Tool: {result['tool_name']}
-Parameters: {json.dumps(result['parameters'], indent=2)}
-Response: {json.dumps(result['response'], indent=2)}
-"""
+            if "tool_name" in result and "parameters" in result and "response" in result:
+                tool_results_text += f"""
+    Tool: {result['tool_name']}
+    Parameters: {json.dumps(result['parameters'], indent=2)}
+    Response: {json.dumps(result['response'], indent=2)}
+    """
 
         # Create a prompt for the agent to generate a final response
         prompt = config.FINAL_RESPONSE_PROMPT.format(
@@ -124,7 +126,7 @@ Response: {json.dumps(result['response'], indent=2)}
         )
 
         # Add the prompt with tool results
-        messages.append(AIMessage(content=prompt))
+        messages.append(HumanMessage(content=prompt))
 
         if self.verbose:
             logger.info("Generating final response using tool results")
@@ -138,12 +140,11 @@ Response: {json.dumps(result['response'], indent=2)}
         response = agent_llm.invoke(messages)
         duration = time.time() - start_time   
 
-        prompt_tokens = response.response_metadata["token_usage"]["prompt_tokens"]
-        completion_tokens = response.response_metadata["token_usage"]["completion_tokens"]
-        total_tokens = response.response_metadata["token_usage"]["total_tokens"]
+        input_tokens, output_tokens = LLMHandler.get_token_usage_info(response)
+        total_tokens = input_tokens + output_tokens
 
-        self.num_input_tokens += prompt_tokens
-        self.num_output_tokens += completion_tokens
+        self.num_input_tokens += input_tokens
+        self.num_output_tokens += output_tokens
         self.total_tokens += total_tokens
         self.total_duration += duration
 
@@ -157,8 +158,8 @@ Response: {json.dumps(result['response'], indent=2)}
                 input=exact_input,  
                 output=response.content,
                 model=self.model_name,
-                num_input_tokens=prompt_tokens,
-                num_output_tokens=completion_tokens,
+                num_input_tokens=input_tokens,
+                num_output_tokens=output_tokens,
                 total_tokens=total_tokens,
                 duration_ns=int(duration*1_000_000_000),
                 name="agent_final_response",
@@ -297,12 +298,11 @@ Response: {json.dumps(result['response'], indent=2)}
         agent_response = self.agent_llm.invoke(messages)
         duration = time.time() - start_time
 
-        prompt_tokens = agent_response.response_metadata["token_usage"]["prompt_tokens"]
-        completion_tokens = agent_response.response_metadata["token_usage"]["completion_tokens"]
-        total_tokens = agent_response.response_metadata["token_usage"]["total_tokens"]
+        input_tokens, output_tokens = LLMHandler.get_token_usage_info(agent_response)
+        total_tokens = input_tokens + output_tokens
 
-        self.num_input_tokens += prompt_tokens
-        self.num_output_tokens += completion_tokens
+        self.num_input_tokens += input_tokens
+        self.num_output_tokens += output_tokens
         self.total_tokens += total_tokens
         self.total_duration += duration
         
@@ -345,8 +345,8 @@ Response: {json.dumps(result['response'], indent=2)}
                 input=exact_input,
                 output=output_with_tool_calls,
                 model=self.model_name,
-                num_input_tokens=prompt_tokens,
-                num_output_tokens=completion_tokens,
+                num_input_tokens=input_tokens,
+                num_output_tokens=output_tokens,
                 total_tokens=total_tokens,
                 tools=tools,
                 duration_ns=int(duration*1_000_000_000),

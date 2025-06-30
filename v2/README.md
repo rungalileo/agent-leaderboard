@@ -12,7 +12,7 @@ The v2 system consists of:
 ## Environment Setup
 
 ### Prerequisites
-- Python 3.8+
+- Python 3.12
 - API keys for LLM providers (OpenAI, Anthropic, etc.)
 
 ### 1. Install Dependencies
@@ -53,7 +53,7 @@ Use the provided script to generate a complete dataset for a domain:
 
 ```bash
 cd datasets
-./generate.sh
+export domain=telecom && bash generate.sh
 ```
 
 This script generates:
@@ -136,9 +136,8 @@ python run_parallel_experiments.py \
   --models "gpt-4.1-mini-2025-04-14,claude-3-7-sonnet-20250219" \
   --domains "banking,healthcare" \
   --categories "adaptive_tool_use" \
-  --max-processes 4 \
+  --max-processes-per-model 2 \
   --log-to-galileo
-  --verbose
 ```
 
 ### Experiment Parameters
@@ -154,7 +153,7 @@ python run_parallel_experiments.py \
 | `--verbose` | Enable detailed logging | |
 | `--log-to-galileo` | Enable Galileo logging | |
 | `--add-timestamp` | Add timestamp to experiment names | |
-| `--max-processes` | Max parallel processes (parallel mode only) | `4` |
+| `--max-processes` | Max parallel processes (parallel mode only) | `2` |
 
 ## Evaluation Categories
 

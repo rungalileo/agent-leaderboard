@@ -12,7 +12,7 @@ from llm_handler import LLMHandler
 from langchain_core.messages import HumanMessage
 from galileo import galileo_context
 from galileo.datasets import get_dataset
-from galileo.experiments import run_experiment, get_experiment
+from galileo.experiments import run_experiment, get_experiment, get_experiments
 from galileo.projects import get_project, create_project
 from dotenv import load_dotenv
 from utils import (
@@ -65,9 +65,6 @@ class AgentSimulation:
         global logger
         logger = setup_logger(verbose=verbose)
 
-        # Initialize LLM handler
-        self.llm_handler = LLMHandler()
-
         # Load data
         self.tools_with_output_schema = self._load_tools()
         # remove response_schema key from tools
@@ -79,15 +76,21 @@ class AgentSimulation:
         self.scenarios = self._load_scenarios()
 
         # Initialize LLMs with tools 
-        self.agent_llm = self.llm_handler.get_llm(
+        self.agent_llm = LLMHandler().get_llm(
             model_name=agent_model,
             temperature=config.AGENT_TEMPERATURE,
             max_tokens=config.AGENT_MAX_TOKENS,
             tools=self.tools,  
         )
 
-        self.simulator_llm = self.llm_handler.get_llm(
-            model_name=config.SIMULATOR_MODEL,
+        self.user_simulator_llm = LLMHandler().get_llm(
+            model_name=config.USER_SIMULATOR_MODEL,
+            temperature=config.SIMULATOR_TEMPERATURE,
+            max_tokens=config.SIMULATOR_MAX_TOKENS,
+        )
+
+        self.tool_simulator_llm = LLMHandler().get_llm(
+            model_name=config.TOOL_SIMULATOR_MODEL,
             temperature=config.SIMULATOR_TEMPERATURE,
             max_tokens=config.SIMULATOR_MAX_TOKENS,
         )
@@ -109,7 +112,7 @@ class AgentSimulation:
         self.tool_simulator = ToolSimulator(
             domain=domain,
             category=category,
-            simulator_llm=self.simulator_llm,
+            simulator_llm=self.tool_simulator_llm,
             tools=self.tools_with_output_schema,
             galileo_logger=self.galileo_logger,
             verbose=verbose,
@@ -129,14 +132,15 @@ class AgentSimulation:
 
         # User simulator
         self.user_simulator = UserSimulator(
-            simulator_llm=self.simulator_llm,
+            simulator_llm=self.user_simulator_llm,
             history_manager=self.history_manager,
         )
 
         # Create configuration information string
         config_info = (
             f"{Fore.CYAN}Agent Model:{Style.RESET_ALL} {self.agent_model}\n"
-            f"{Fore.CYAN}Simulator Model:{Style.RESET_ALL} {config.SIMULATOR_MODEL}\n"
+            f"{Fore.CYAN}User Simulator Model:{Style.RESET_ALL} {config.USER_SIMULATOR_MODEL}\n"
+            f"{Fore.CYAN}Tool Simulator Model:{Style.RESET_ALL} {config.TOOL_SIMULATOR_MODEL}\n"
             f"{Fore.CYAN}Domain:{Style.RESET_ALL} {self.domain}\n"
             f"{Fore.CYAN}Category:{Style.RESET_ALL} {self.category}\n"
             f"{Fore.CYAN}Max Turns:{Style.RESET_ALL} {config.MAX_TURNS}\n"
@@ -226,6 +230,7 @@ class AgentSimulation:
 
         # Log simulation start
         sim_start_info = (
+            f"{Fore.CYAN}Model:{Style.RESET_ALL} {self.agent_model} | "
             f"{Fore.CYAN}Domain:{Style.RESET_ALL} {self.domain} | "
             f"{Fore.CYAN}Category:{Style.RESET_ALL} {self.category} | "
             f"{Fore.CYAN}Scenario:{Style.RESET_ALL} {scenario_idx}"
@@ -605,7 +610,8 @@ def run_simulation_experiments(
         f"{Fore.CYAN}Parallel Tool Execution:{Style.RESET_ALL} Enabled\n"
         f"{Fore.CYAN}Agent Temperature:{Style.RESET_ALL} {config.AGENT_TEMPERATURE}\n"
         f"{Fore.CYAN}Agent Max Tokens:{Style.RESET_ALL} {config.AGENT_MAX_TOKENS}\n"
-        f"{Fore.CYAN}Simulator Model:{Style.RESET_ALL} {config.SIMULATOR_MODEL}\n"
+        f"{Fore.CYAN}Simulator Model:{Style.RESET_ALL} {config.USER_SIMULATOR_MODEL}\n"
+        f"{Fore.CYAN}Tool Simulator Model:{Style.RESET_ALL} {config.TOOL_SIMULATOR_MODEL}\n"
         f"{Fore.CYAN}Simulator Temperature:{Style.RESET_ALL} {config.SIMULATOR_TEMPERATURE}\n"
         f"{Fore.CYAN}Simulator Max Tokens:{Style.RESET_ALL} {config.SIMULATOR_MAX_TOKENS}\n"
         f"{Fore.CYAN}Max Turns:{Style.RESET_ALL} {config.MAX_TURNS}"
@@ -639,7 +645,8 @@ def run_simulation_experiments(
 
     for model, domain, category in tqdm(
         experiment_combinations, desc="Running experiments", total=total_experiments
-    ):
+    ):  
+
         # Set project_name based on model if not specified
         current_project_name = project_name
         if not project_name_specified:
@@ -652,6 +659,20 @@ def run_simulation_experiments(
         if not bool(get_project(name=current_project_name)):
             logger.info(f"Creating project: {current_project_name}")
             create_project(current_project_name)
+
+        # ensure only 1 experiment is running for each domain and category
+        project_id = get_project(name=current_project_name).id
+        experiment_already_exists = False
+        for exp in get_experiments(project_id=project_id):
+            if domain in exp.name and category in exp.name:
+                if "total_responses" in exp.aggregate_metrics.additional_properties:
+                    if exp.aggregate_metrics.additional_properties["total_responses"] >= config.MIN_SAMPLES_PER_DATASET:   
+                        print("Experiment already exists:", exp.name)
+                        experiment_already_exists = True
+                        break
+        
+        if experiment_already_exists:
+            continue
 
         # Create experiment name, add timestamp only if flag is set
         if add_timestamp:

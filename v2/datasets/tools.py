@@ -29,8 +29,8 @@ The object must follow this exact structure:
   "description": "Specific function purpose and information present in its response.",
   "properties": {{
     "parameter_name": {{
-      "description": "Detailed description of the parameter ending with a period.",
-      "type": "string|number|integer|boolean|array|object",
+      "description": "Detailed description of the parameter ending with a period. Dont keep enums in the description, keep them in the enum field.",
+      "type": "string|number|boolean|array|object",
       "title": "Parameter_Name_Title_Case",
       "enum": ["option1", "option2", "option3"]
     }},
@@ -92,7 +92,7 @@ The object must follow this exact structure:
 
 3. Response Schema Design:
    - Keep response schemas simple and focused on essential information
-   - Limit to 1-5 key fields maximum to avoid overly complex responses
+   - Limit to 1-3 key fields maximum to avoid overly complex responses
    - Include only the most important data that would be immediately useful to customers
    - Avoid nested objects or arrays unless absolutely necessary
 

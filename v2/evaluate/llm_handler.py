@@ -7,6 +7,7 @@ from langchain_cohere import ChatCohere
 from langchain_mistralai import ChatMistralAI
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_vertexai import ChatVertexAI
 from langchain_together import ChatTogether
 from langchain_openai import ChatOpenAI
 # from langchain_fireworks import ChatFireworks
@@ -29,12 +30,10 @@ class LLMHandler:
                 "claude-opus-4-20250514",
             ],
             "mistral": [
-                "open-mistral-nemo-2407",
-                "ministral-8b-2410",
-                "mistral-small-2409",
-                "mistral-large-2411",
-                "mistral-small-2501",
-                "mistral-small-2503",
+                "mistral-small-2506",
+                "mistral-medium-2505",
+                "magistral-small-2506",
+                "magistral-medium-2506",
             ],
             "google": [
                 "gemini-2.0-flash-exp",
@@ -42,15 +41,22 @@ class LLMHandler:
                 "gemini-1.5-pro",
                 "gemini-2.0-flash-001",
                 "gemini-2.0-flash-lite-001",
-                "gemini-2.5-flash-preview-05-20",
-                "gemini-2.5-pro-preview-06-05",
+                "gemini-2.5-flash-lite-preview-06-17",
+                "gemini-2.5-flash",
+                "gemini-2.5-pro",
             ],
             "together": [
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo",
                 "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo",
                 "deepseek-ai/DeepSeek-R1",
-                "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
-                "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+                "deepseek-ai/DeepSeek-R1-0528-tput",
+                "deepseek-ai/DeepSeek-V3",
+                "Qwen/Qwen2.5-72B-Instruct-Turbo",
+                "Qwen/Qwen3-235B-A22B-fp8-tput",
+                "arcee-ai/caller",
+                "arcee_ai/arcee-spotlight",
+                "arcee-ai/AFM-4.5B-Preview",
+                "google/gemma-3n-E4B-it",
             ],
             "openai": [
                 "gpt-4o-2024-11-20",
@@ -87,67 +93,25 @@ class LLMHandler:
             "deepseek": [
                 "deepseek-chat",
             ],
+            "ibm": [
+                "ibm-granite/granite-3.3-8b-instruct",
+            ],
         }
 
-        # Model name patterns for auto-detection of client
-        self.model_patterns = {
-            "o1": "openai",
-            "o3": "openai",
-            "gpt": "openai",
-            "claude": "anthropic",
-            "mistral-": "mistral",
-            "ministral": "mistral",
-            "gemini": "google",
-            "mixtral": "together",
-            "meta-llama": "together",
-            "fireworks": "fireworks",
-            "r1": "together",
-            "deepseek": "deepseek",
-            "nova": "bedrock",
-            "command": "cohere",
-            "nvidia": "nvidia",
-            "gemma": "google",
-            "palmyra": "writer",
-        }
+        self.model_name_to_provider = {name:provider for provider, models in self.available_models.items() for name in models}
 
     def _detect_provider(self, model_name: str) -> str:
         """
         Automatically detects the provider based on the model name.
         """
-        for pattern, provider in self.model_patterns.items():
-            if pattern in model_name.lower():
-                return provider
+        if model_name in self.model_name_to_provider:
+            return self.model_name_to_provider[model_name]
         raise ValueError(f"Could not detect provider for model name: {model_name}")
 
-    def _validate_model(self, provider: str, model_name: str) -> bool:
-        """
-        Validates if the requested model is available for the given provider.
-        """
-        if provider not in self.available_models:
-            raise ValueError(
-                f"Provider {provider} not supported. Available providers: {list(self.available_models.keys())}"
-            )
-
-        if model_name not in self.available_models[provider]:
-            raise ValueError(
-                f"Model {model_name} not available for {provider}. Available models: {self.available_models[provider]}"
-            )
-
-        return True
-
-    def get_all_models(self):
-        """
-        Returns all available models from each provider as a list
-        """
-        all_models = []
-        for provider, models in self.available_models.items():
-            all_models.extend(models)
-        return all_models
 
     def get_llm(
         self,
-        model_name: str,
-        provider: Optional[str] = None,
+        model_name: str, 
         temperature: float = 0.0,
         max_tokens: Optional[int] = 4000,
         api_key: Optional[str] = None,
@@ -158,7 +122,6 @@ class LLMHandler:
         Creates and returns an LLM instance based on the provider and model name.
 
         Args:
-            provider: The LLM provider ("anthropic", "mistral", or "google")
             model_name: The specific model to use
             temperature: Temperature parameter for generation (0.0 to 1.0)
             max_tokens: Maximum tokens to generate
@@ -170,10 +133,7 @@ class LLMHandler:
             A LangChain chat model instance
         """
         # Auto-detect provider if not specified
-        if provider is None:
-            provider = self._detect_provider(model_name)
-
-        self._validate_model(provider, model_name)
+        provider = self._detect_provider(model_name)
 
         # Set API key if provided
         if api_key:
@@ -220,9 +180,29 @@ class LLMHandler:
             llm = ChatWriter(model=model_name, **model_params)
         elif provider == "deepseek":
             llm = ChatDeepSeek(model=model_name, **model_params)
+        elif provider == "vertexai":
+            llm = ChatVertexAI(model=model_name, **model_params)
+        elif provider == "ibm":
+            base_url ='https://galileo-3scale-apicast-production.apps.rits.fmaas.res.ibm.com/granite-3-3-8b-instruct-gll/v1'
+            llm = ChatOpenAI(
+                model=model_name,
+                max_retries=3,
+                api_key=os.getenv("RITS_API_KEY"),
+                base_url=base_url,
+                default_headers={'RITS_API_KEY': os.getenv("RITS_API_KEY")},
+            )
 
         # Bind tools if provided
         if tools and llm:
             llm = llm.bind_tools(tools)
 
         return llm
+
+    @staticmethod
+    def get_token_usage_info(response):
+        input_tokens = response.usage_metadata["input_tokens"]
+        output_tokens = response.usage_metadata["output_tokens"] 
+        if "output_token_details" in response.usage_metadata:
+            if "reasoning" in response.usage_metadata["output_token_details"]:
+                output_tokens += response.usage_metadata["output_token_details"]["reasoning"]
+        return input_tokens, output_tokens

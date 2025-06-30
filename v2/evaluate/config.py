@@ -3,12 +3,13 @@ Configuration file for Agent Evaluation system
 """
 
 # LLM Configuration
-SIMULATOR_MODEL = "gpt-4.1-mini-2025-04-14"
-SIMULATOR_TEMPERATURE = 0.0
+USER_SIMULATOR_MODEL = "gpt-4.1-2025-04-14"
+TOOL_SIMULATOR_MODEL = "gpt-4.1-mini-2025-04-14"
+SIMULATOR_TEMPERATURE = 0.0 # for maximum reproducibility
 SIMULATOR_MAX_TOKENS = 4000
 
 
-AGENT_TEMPERATURE = 0.0
+AGENT_TEMPERATURE = 0.0 # keeping it low to avoid hallucinations
 AGENT_MAX_TOKENS = 4000
 
 METRICS = [
@@ -23,7 +24,10 @@ FILE_PATHS = {
 }
 
 # Simulation Configuration
-MAX_TURNS = 15  # Maximum number of turns in a conversation
+MAX_TURNS = 10  # Maximum number of turns in a conversation so that agent does not get stuck in a loop
+
+# Samples per dataset
+MIN_SAMPLES_PER_DATASET = 80    # Minimum number of samples per dataset to be considered for evaluation (if less than this, the experiment is not considered complete)
 
 # Domain-specific system prompt additions
 DOMAIN_SPECIFIC_INSTRUCTIONS = {
@@ -45,11 +49,6 @@ Your job is to use available tools to troubleshoot connection issues, change pla
 Solve problems directly using tools, especially for frustrated customers.
 For technical issues: gather specific details, then use diagnostic tools to identify and resolve problems.
 You can accomplish most telecom tasks using the tools provided.""",
-    "automobile": """You are an Automotive Services Assistant helping customers with vehicle needs.
-Your job is to use available tools to book service appointments, check vehicle status, and provide diagnostics.
-Facilitate complete processes rather than just providing general information.
-For scheduling service: collect vehicle details and preferences, then secure appointments using tools.
-You can accomplish most automotive service tasks using the tools provided.""",
     "insurance": """You are an Insurance Assistant helping clients manage insurance needs.
 Your job is to use available tools to check policies, process claims, and update coverage.
 Execute insurance-related tasks directly rather than just explaining processes.
@@ -80,12 +79,10 @@ STRICT REQUIREMENTS:
 
 Generate a valid JSON response that exactly matches the schema and would realistically be returned by this tool."""
 
-USER_SIMULATOR_PROMPT = """You are simulating a user with the following persona:
-
+USER_SIMULATOR_PROMPT = """You are replying like a user with the following persona:
 {persona_json}
 
 You are participating in a scenario with these details:
-
 {scenario_json}
 
 CONVERSATION HISTORY:
@@ -97,11 +94,16 @@ TOOL OUTPUTS:
 Respond as this user based on their persona and scenario goals.
 
 BEHAVIOR GUIDELINES:
-1. Provide the information that is required to complete the task.
-2. If all tasks are completed successfully, end with "CONVERSATION_COMPLETE" and a goodbye message
-3. If agent indicates a request is unsupported: don't repeat it, move to another goal. If you exhausted all goals, end with "CONVERSATION_COMPLETE"
-4. Keep responses natural and realistic for your persona
-5. Respond in short and concise manner"""
+1. Respond appropriately to the questions asked by the assistant.
+2. Check if the assistant has completed all the tasks in the user_goals. If not then ask the assistant to complete the remaining tasks.
+3. If assistant indicates a request is unsupported: don't repeat it, move to another goal. 
+4. If assistant says it has completed all the tasks and there are no more goals to complete then end with "CONVERSATION_COMPLETE". 
+5. Keep responses natural and realistic for your persona.
+6. If you are not sure about the answer, say you do not know.
+7. Respond in a concise manner. No need to thank the assistant for the help.
+8. Do not discuss anything beyond what is needed to complete the goals.
+9. If the assistant is not able to complete the goals, skip and move to remaining goals. Do not ask the assistant to repeat the same goal again.
+10. Once we have iterated through all the goals and assistant has succeeded or failed, end with 'CONVERSATION_COMPLETE'."""
 
 AGENT_SYSTEM_PROMPT = """{domain_instructions}
 
@@ -115,18 +117,17 @@ Important:
 - If you do not know the answer, say you do not know.
 """
 
-FINAL_RESPONSE_PROMPT = """Based on the conversation history and the results of the tools you used, 
-please provide a helpful response to the user's request.
+FINAL_RESPONSE_PROMPT = """Based on the conversation history and the results of the tools, please provide a helpful response to the user's request.
 
-User's message: {user_message}
-
-Tool results:
+# Tool results
 {tool_results_text}
 
-Your response should:
+# Response guidelines
 1. Clearly explain what information you found using the tools
 2. Answer the user's question completely based on the tool results
 3. Be helpful, clear, and concise
 4. IMPORTANT: DO NOT include any JSON tool call format in your response
 5. IMPORTANT: DO NOT prefix your response with phrases like "Based on the tool results"
+
+Now generate your response.
 """

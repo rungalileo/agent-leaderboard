@@ -181,7 +181,10 @@ class ToolSimulator:
             if json_match:
                 response_content = json_match.group(1)
 
-        tool_response = json.loads(response_content)
+        try:
+            tool_response = json.loads(response_content)
+        except json.JSONDecodeError:
+            tool_response = {"Error": "Invalid JSON response from tool"}
 
         # Format tool execution info for logging with properly formatted JSON
         tool_info = (

@@ -508,7 +508,7 @@ if __name__ == "__main__":
                 }
 
                 # Create a progress bar for completed tasks
-                with tqdm(total=len(personas), desc="Personas") as progress:
+                with tqdm(total=len(personas), desc="Scenarios") as progress:
                     # Process completed futures as they finish
                     for future in concurrent.futures.as_completed(future_to_idx):
                         idx = future_to_idx[future]
