@@ -14,6 +14,7 @@ from langchain_openai import ChatOpenAI
 from langchain_aws import ChatBedrock
 from langchain_writer import ChatWriter
 from langchain_deepseek import ChatDeepSeek
+from langchain_xai import ChatXAI
 
 class LLMHandler:
     """
@@ -57,6 +58,7 @@ class LLMHandler:
                 "arcee_ai/arcee-spotlight",
                 "arcee-ai/AFM-4.5B-Preview",
                 "google/gemma-3n-E4B-it",
+                "moonshotai/Kimi-K2-Instruct",
             ],
             "openai": [
                 "gpt-4o-2024-11-20",
@@ -96,7 +98,12 @@ class LLMHandler:
             "ibm": [
                 "ibm-granite/granite-3.3-8b-instruct",
             ],
-        }
+            "xai": [
+                "grok-3",
+                "grok-3-mini",
+                "grok-4-0709",
+            ],
+        }       
 
         self.model_name_to_provider = {name:provider for provider, models in self.available_models.items() for name in models}
 
@@ -182,6 +189,8 @@ class LLMHandler:
             llm = ChatDeepSeek(model=model_name, **model_params)
         elif provider == "vertexai":
             llm = ChatVertexAI(model=model_name, **model_params)
+        elif provider == "xai":
+            llm = ChatXAI(model=model_name, **model_params)
         elif provider == "ibm":
             base_url ='https://galileo-3scale-apicast-production.apps.rits.fmaas.res.ibm.com/granite-3-3-8b-instruct-gll/v1'
             llm = ChatOpenAI(
@@ -190,13 +199,20 @@ class LLMHandler:
                 api_key=os.getenv("RITS_API_KEY"),
                 base_url=base_url,
                 default_headers={'RITS_API_KEY': os.getenv("RITS_API_KEY")},
+                **model_params
             )
 
         # Bind tools if provided
         if tools and llm:
             llm = llm.bind_tools(tools)
 
-        return llm
+        llm_with_retry = llm.with_retry(
+        retry_if_exception_type=(Exception,),      # Exception types to retry on
+        wait_exponential_jitter=True,              # Use exponential backoff with jitter
+        stop_after_attempt=7                       # Maximum number of attempts
+    )
+
+        return llm_with_retry
 
     @staticmethod
     def get_token_usage_info(response):

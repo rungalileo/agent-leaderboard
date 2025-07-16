@@ -56,12 +56,9 @@ class LLMAgent:
         # Track the current turn number
         self.current_turn = 0
 
-    def update_agent_prompt(self, tools: List[Dict[str, Any]]) -> str:
+    def update_agent_prompt(self) -> str:
         """
         Create a simplified system prompt for the agent when using tool binding.
-
-        Args:
-            tools: List of tools available to the agent (not used in prompt when using tool binding)
 
         Returns:
             A system prompt for the agent
@@ -74,9 +71,11 @@ class LLMAgent:
             ]
 
         # Return a simplified prompt without tool descriptions since we're using tool binding
-        return config.AGENT_SYSTEM_PROMPT.format(
+        system_prompt = config.AGENT_SYSTEM_PROMPT.format(
             domain_instructions=domain_instructions
         )
+            
+        return system_prompt
 
     def generate_final_response(
         self,
@@ -118,7 +117,7 @@ class LLMAgent:
         )
 
         # Get system prompt
-        system_prompt = self.update_agent_prompt([])
+        system_prompt = self.update_agent_prompt()  
 
         # Convert conversation history to LangChain messages, explicitly passing the system prompt
         messages = self.history_manager.to_langchain_messages(
@@ -228,7 +227,7 @@ class LLMAgent:
         self.current_turn += 1
 
         # Create system prompt
-        system_prompt = self.update_agent_prompt(tools)
+        system_prompt = self.update_agent_prompt()
 
         # Initialize history with system prompt if it's not there already
         if not conversation_history or conversation_history[0].get("role") != "system":

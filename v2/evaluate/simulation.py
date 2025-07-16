@@ -188,7 +188,7 @@ class AgentSimulation:
         persona = self.personas[persona_idx]
 
         # Create system prompt with tools
-        system_prompt = self.agent.update_agent_prompt(self.tools)
+        system_prompt = self.agent.update_agent_prompt()
 
         # Initialize conversation history with system prompt
         conversation_history = (

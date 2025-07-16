@@ -8,26 +8,26 @@ from dotenv import load_dotenv
 
 load_dotenv("../.env")
 
-MIN_RESPONSES = 70
+MIN_RESPONSES = 65
 
 # Model metadata with costs and vendor information
 model_metadata = {
     "claude-sonnet-4-20250514": {
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Normal", 
         "vendor": "Anthropic",
         "input_cost_per_m_token": 3,
         "output_cost_per_m_token": 15
     },
     "gemini-2.5-pro": {
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Reasoning",
         "vendor": "Google", 
         "input_cost_per_m_token": 1.25,
         "output_cost_per_m_token": 10
     },
     "gemini-2.5-flash": {
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Reasoning",
         "vendor": "Google",
         "input_cost_per_m_token": 0.3,
@@ -41,7 +41,7 @@ model_metadata = {
         "output_cost_per_m_token": 0.3
     },
     "mistral-medium-2505": {
-        "model_type": "Private", 
+        "model_type": "Proprietary", 
         "output_type": "Normal",
         "vendor": "Mistral",
         "input_cost_per_m_token": 0.4,
@@ -64,7 +64,7 @@ model_metadata = {
     },
     "amazon.nova-pro-v1:0": {  
         "model_name": "nova-pro-v1",
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Normal",
         "vendor": "Amazon",
         "input_cost_per_m_token": 0.8,
@@ -72,7 +72,7 @@ model_metadata = {
     },
     "amazon.nova-lite-v1:0": {  
         "model_name": "nova-lite-v1",
-        "model_type": "Private", 
+        "model_type": "Proprietary", 
         "output_type": "Normal",
         "vendor": "Amazon",
         "input_cost_per_m_token": 0.06,
@@ -94,28 +94,28 @@ model_metadata = {
         "output_cost_per_m_token": 1.5
     },
     "magistral-medium-2506": {
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Reasoning", 
         "vendor": "Mistral",
         "input_cost_per_m_token": 2,
         "output_cost_per_m_token": 5
     },
     "gpt-4.1-2025-04-14": {
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Normal",
         "vendor": "OpenAI",
         "input_cost_per_m_token": 2,
         "output_cost_per_m_token": 8
     },
     "gpt-4.1-mini-2025-04-14": {
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Normal", 
         "vendor": "OpenAI",
         "input_cost_per_m_token": 0.4,
         "output_cost_per_m_token": 1.6
     },
     "gpt-4.1-nano-2025-04-14": {
-        "model_type": "Private",
+        "model_type": "Proprietary",
         "output_type": "Normal",
         "vendor": "OpenAI", 
         "input_cost_per_m_token": 0.1,
@@ -128,23 +128,30 @@ model_metadata = {
         "input_cost_per_m_token": 0.55,
         "output_cost_per_m_token": 0.85
     },
-    "granite-3.3-8b-instruct": {  # Maps to ibm-granite/granite-3.3-8b-instruct  
+    "grok-4-0709": {
+        "model_type": "Proprietary",
+        "output_type": "Reasoning",
+        "vendor": "xAI",
+        "input_cost_per_m_token": 3,
+        "output_cost_per_m_token": 15
+    },
+    "Kimi-K2-Instruct": {
         "model_type": "Open source",
         "output_type": "Normal",
-        "vendor": "IBM",
-        "input_cost_per_m_token": 0.2,
-        "output_cost_per_m_token": 0.2
+        "vendor": "Moonshot AI",
+        "input_cost_per_m_token": 1,
+        "output_cost_per_m_token": 3
     }
 }
 
 domains = ["banking", "telecom", "healthcare", "insurance", "investment"]
 models = [
-        "claude-sonnet-4-20250514", "gemini-2.5-pro", 
-        "gemini-2.5-flash", "mistral-small-2506", "mistral-medium-2505", "amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", "deepseek-ai/DeepSeek-V3",
-        "Qwen/Qwen2.5-72B-Instruct-Turbo",
-        "Qwen/Qwen3-235B-A22B-fp8-tput", "magistral-small-2506", "magistral-medium-2506", 
-        "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14", "arcee-ai/caller",
-        "ibm-granite/granite-3.3-8b-instruct",
+        "claude-sonnet-4-20250514", "gemini-2.5-pro", "gemini-2.5-flash", 
+        "Qwen/Qwen2.5-72B-Instruct-Turbo", "Qwen/Qwen3-235B-A22B-fp8-tput", "deepseek-ai/DeepSeek-V3", 
+        "mistral-small-2506", "mistral-medium-2505", "magistral-small-2506", "magistral-medium-2506", 
+        "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14",
+         "amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", 
+        "arcee-ai/caller", "grok-4-0709", "moonshotai/Kimi-K2-Instruct"
         ]
 
 def process_experiment(exp, model):
@@ -353,7 +360,7 @@ if __name__ == "__main__":
             leaderboard_row = {
                 'Model': model.lower(),
                 'Model Type': first_row.get('model_type', ''),
-                'Model Output Type': first_row.get('output_type', ''),
+                'Output Type': first_row.get('output_type', ''),
                 'Vendor': first_row.get('vendor', ''),
                 '$/M input token': first_row.get('input_cost_per_m_token', ''),
                 '$/M output token': first_row.get('output_cost_per_m_token', ''),
@@ -377,7 +384,7 @@ if __name__ == "__main__":
         leaderboard_df = pd.DataFrame(leaderboard_data)
         
         # Sort by AC Avg column (descending - highest scores first)
-        leaderboard_df = leaderboard_df.sort_values('AC Avg', ascending=False)
+        leaderboard_df = leaderboard_df.sort_values(['AC Avg', 'TSQ Avg'], ascending=False)
         
         # Save leaderboard to CSV
         leaderboard_df.to_csv("../data/leaderboard.csv", index=False)

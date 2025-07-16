@@ -240,7 +240,14 @@ class ToolSimulator:
                 conversation_history=conversation_history,
                 agent_action=agent_action,
             )
-        return {"Error": "Tool not found"}
+        
+        # Return properly structured error result
+        return {
+            "tool_name": tool_name,
+            "parameters": parameters,
+            "response": {"Error": "Tool not found"},
+            "duration_ns": 0,
+        }
 
     def simulate_tools(
         self,
