@@ -29,12 +29,14 @@ class LLMHandler:
                 "claude-3-7-sonnet-20250219",
                 "claude-sonnet-4-20250514",
                 "claude-opus-4-20250514",
+                "claude-opus-4-1-20250805",
             ],
             "mistral": [
                 "mistral-small-2506",
                 "mistral-medium-2505",
                 "magistral-small-2506",
                 "magistral-medium-2506",
+                "mistral-medium-2508"
             ],
             "google": [
                 "gemini-2.0-flash-exp",
@@ -45,6 +47,7 @@ class LLMHandler:
                 "gemini-2.5-flash-lite-preview-06-17",
                 "gemini-2.5-flash",
                 "gemini-2.5-pro",
+                "gemini-2.5-flash-lite",
             ],
             "together": [
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo",
@@ -59,6 +62,13 @@ class LLMHandler:
                 "arcee-ai/AFM-4.5B-Preview",
                 "google/gemma-3n-E4B-it",
                 "moonshotai/Kimi-K2-Instruct",
+                "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+                "Qwen/Qwen3-235B-A22B-Instruct-2507-tput",
+                "Qwen/Qwen3-235B-A22B-Thinking-2507",
+                "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+                "openai/gpt-oss-20b",
+                "openai/gpt-oss-120b",
+                "zai-org/GLM-4.5-Air-FP8",
             ],
             "openai": [
                 "gpt-4o-2024-11-20",
@@ -68,6 +78,11 @@ class LLMHandler:
                 "gpt-4.1-2025-04-14",
                 "gpt-4.1-mini-2025-04-14",
                 "gpt-4.1-nano-2025-04-14",
+                "o4-mini-2025-04-16",
+                "gpt-5-2025-08-07",
+                "gpt-5-mini-2025-08-07",
+                "gpt-5-nano-2025-08-07"
+
             ],
             "fireworks": [
                 "accounts/fireworks/models/qwen-qwq-32b-preview",
@@ -75,6 +90,7 @@ class LLMHandler:
                 "accounts/fireworks/models/deepseek-r1",
                 "accounts/fireworks/models/llama4-maverick-instruct-basic",
                 "accounts/fireworks/models/llama4-scout-instruct-basic",
+                "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct",
             ],
             "bedrock": [
                 "amazon.nova-pro-v1:0",
@@ -149,8 +165,18 @@ class LLMHandler:
         model_params = {"temperature": temperature, "max_tokens": max_tokens, **kwargs}
 
         # remove temperature if model name contains o1
-        if ("o1" in model_name) or ("o3" in model_name):
+        if ("o1" in model_name) or ("o3" in model_name) or ("gpt-5" in model_name):
             model_params.pop("temperature", None)
+            if "gpt-5" in model_name:
+                model_params["parallel_tool_calls"] = True
+                model_params["max_completion_tokens"] = max_tokens
+                model_params["reasoning_effort"] = "low"
+
+        if "gpt-oss" in model_name:
+            model_params["temperature"] = 0.6
+            model_params["top_p"] = 0.95
+            model_params["max_tokens"] = max_tokens
+            model_params["reasoning_effort"] = "low"
 
         # set temperature to 0.6 if model name contains r1
         if ("r1" in model_name) or ("nvidia/llama-3.3-nemotron" in model_name):
@@ -158,6 +184,24 @@ class LLMHandler:
 
         if "deepseek" in model_name:
             model_params["temperature"] = 0.0
+
+        # best parameters for qwen3 
+        if "qwen3" in model_name:
+            #thinking model - Temperature=0.6, TopP=0.95, TopK=20, and MinP=0.
+            # https://huggingface.co/Qwen/Qwen3-235B-A22B-Thinking-2507#best-practices
+            if "thinking" in model_name:
+                model_params["temperature"] = 0.6
+                model_params["top_p"] = 0.95
+                model_params["top_k"] = 20
+                model_params["min_p"] = 0.0
+                model_params["repetition_penalty"] = 1.05
+            #instruct model - Temperature=0.7, TopP=0.8, TopK=20, and MinP=0.
+            #https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507#best-practices
+            model_params["temperature"] = 0.7
+            model_params["top_p"] = 0.8
+            model_params["top_k"] = 20
+            model_params["min_p"] = 0.0
+            model_params["repetition_penalty"] = 1.05
 
         # Remove None values
         model_params = {k: v for k, v in model_params.items() if v is not None}

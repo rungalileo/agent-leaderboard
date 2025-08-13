@@ -141,7 +141,7 @@ def calculate_costs_and_update_leaderboard(results_df):
     
     # Round other columns
     model_stats['avg_turns_completed'] = model_stats['avg_turns_completed'].round(2)
-    model_stats['avg_total_duration_without_tool_calls'] = model_stats['avg_total_duration_without_tool_calls'].round(2)
+    # model_stats['avg_total_duration_without_tool_calls'] = model_stats['avg_total_duration_without_tool_calls'].round(2)
     
     # Calculate domain-specific statistics
     domains = ['banking', 'healthcare', 'insurance', 'investment', 'telecom']

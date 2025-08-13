@@ -3,6 +3,9 @@ from galileo.experiments import get_experiments
 from galileo.projects import get_project
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 import time
+import os
+import json
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -40,27 +43,12 @@ model_metadata = {
         "input_cost_per_m_token": 0.1,
         "output_cost_per_m_token": 0.3
     },
-    "mistral-medium-2505": {
-        "model_type": "Proprietary", 
-        "output_type": "Normal",
-        "vendor": "Mistral",
-        "input_cost_per_m_token": 0.4,
-        "output_cost_per_m_token": 2
-    },
     "DeepSeek-V3": {  # Maps to deepseek-ai/DeepSeek-V3
         "model_type": "Open source",
         "output_type": "Normal", 
         "vendor": "Deepseek",
         "input_cost_per_m_token": 0.27,
         "output_cost_per_m_token": 1.1
-    },
-    "Qwen3-235B-A22B-fp8-tput": {
-        "model_name": "Qwen3-235B-A22B",
-        "model_type": "Open source",
-        "output_type": "Reasoning",
-        "vendor": "Alibaba",
-        "input_cost_per_m_token": 0.2,
-        "output_cost_per_m_token": 0.6
     },
     "amazon.nova-pro-v1:0": {  
         "model_name": "nova-pro-v1",
@@ -141,18 +129,64 @@ model_metadata = {
         "vendor": "Moonshot AI",
         "input_cost_per_m_token": 1,
         "output_cost_per_m_token": 3
+    },
+    "GLM-4.5-Air-FP8": {
+        "model_name": "GLM-4.5-Air",
+        "model_type": "Open source",
+        "output_type": "Reasoning",
+        "vendor": "Zai",
+        "input_cost_per_m_token": 0.2,
+        "output_cost_per_m_token": 1.1
+    },
+    "gemini-2.5-flash-lite": {
+        "model_name": "gemini-2.5-flash-lite",
+        "model_type": "Proprietary",
+        "output_type": "Reasoning",
+        "vendor": "Google",
+        "input_cost_per_m_token": 0.1,
+        "output_cost_per_m_token": 0.4
+    },
+    "Qwen3-235B-A22B-Instruct-2507-tput": {
+        "model_name": "Qwen3-235B-A22B-Instruct-2507",
+        "model_type": "Open source",
+        "output_type": "Reasoning",
+        "vendor": "Alibaba",
+        "input_cost_per_m_token": 0.2,
+        "output_cost_per_m_token": 0.6
+    },
+    "Qwen3-235B-A22B-Thinking-2507": {
+        "model_type": "Open source",
+        "output_type": "Reasoning",
+        "vendor": "Alibaba",
+        "input_cost_per_m_token": 0.65,
+        "output_cost_per_m_token": 3.0
+    },
+    "Llama-3.3-70B-Instruct-Turbo": {
+        "model_name": "Llama-3.3-70B-Instruct",
+        "model_type": "Open source",
+        "output_type": "Normal",
+        "vendor": "Meta",
+        "input_cost_per_m_token": 0.88,
+        "output_cost_per_m_token": 0.88
+    },
+    "mistral-medium-2508": {
+        "model_type": "Proprietary",
+        "output_type": "Normal",
+        "vendor": "Mistral",
+        "input_cost_per_m_token": 0.4,
+        "output_cost_per_m_token": 2
     }
 }
 
 domains = ["banking", "telecom", "healthcare", "insurance", "investment"]
-models = [
-        "claude-sonnet-4-20250514", "gemini-2.5-pro", "gemini-2.5-flash", 
-        "Qwen/Qwen2.5-72B-Instruct-Turbo", "Qwen/Qwen3-235B-A22B-fp8-tput", "deepseek-ai/DeepSeek-V3", 
-        "mistral-small-2506", "mistral-medium-2505", "magistral-small-2506", "magistral-medium-2506", 
-        "gpt-4.1-2025-04-14", "gpt-4.1-mini-2025-04-14", "gpt-4.1-nano-2025-04-14",
-         "amazon.nova-pro-v1:0", "amazon.nova-lite-v1:0", 
-        "arcee-ai/caller", "grok-4-0709", "moonshotai/Kimi-K2-Instruct"
-        ]
+models = list(model_metadata.keys())
+
+def get_final_model_name_for_cache(original_model: str) -> str:
+    """Derive the final, normalized model name used for cache directory."""
+    processed_model_name = original_model.split('/')[-1] if '/' in original_model else original_model
+    metadata = model_metadata.get(processed_model_name, {})
+    final_model_name = metadata.get('model_name', processed_model_name).lower()
+    return final_model_name
 
 def process_experiment(exp, model):
     """Process a single experiment and return data if it meets criteria"""
@@ -199,6 +233,16 @@ def process_experiment(exp, model):
                             'output_cost_per_m_token': metadata.get('output_cost_per_m_token')
                         })
                     
+                    # Write to cache
+                    try:
+                        cache_base_dir = Path("../data/scores") / final_model_name
+                        cache_base_dir.mkdir(parents=True, exist_ok=True)
+                        cache_file_path = cache_base_dir / f"{exp.name}.json"
+                        with cache_file_path.open("w") as cache_fh:
+                            json.dump(result, cache_fh, indent=2)
+                    except Exception as cache_err:
+                        print(f"Failed to write cache for {exp.name}: {str(cache_err)}")
+
                     return result
                 else:
                     print(f"Experiment {exp.name} has only {exp.aggregate_metrics.additional_properties['total_responses']} responses (< {MIN_RESPONSES})")
@@ -215,28 +259,62 @@ def process_model(model, original_model):
     """Process all experiments for a single model using multithreading"""
     print(f"Starting processing for model: {model}")
     model_data = []
-    
-    try:
-        project_id = get_project(name=model).id
+
+    # Determine cache location for this model
+    final_model_name = get_final_model_name_for_cache(original_model)
+    cache_dir = Path("../data/scores") / final_model_name
+
+    # If cached results already exist for this model, load and return them.
+    if cache_dir.exists():
+        cached_json_files = list(cache_dir.glob("*.json"))
+        if cached_json_files:
+            print(f"Cache found for model '{final_model_name}' with {len(cached_json_files)} files. Skipping remote fetch.")
+            for json_file in cached_json_files:
+                with json_file.open("r") as fh:
+                    cached_result = json.load(fh)
+                if isinstance(cached_result, dict) and 'experiment_name' in cached_result:
+                    model_data.append(cached_result)
+                else:
+                    print(f"Cached file malformed: {json_file.name}. Ignoring.")
+
+            print(f"Completed processing for model: {model}, found {len(model_data)} cached experiments")
+            return model_data
+
+    # No cache available; proceed to fetch from remote
+    project_id = get_project(name=model).id
+
+    # Use ThreadPoolExecutor for experiments within this model
+    with ThreadPoolExecutor(max_workers=10) as thread_executor:
+        # Prepare cache directory for this model (create if missing)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+
+        # Submit processing tasks only for experiments not present in cache
+        future_to_exp = {}
         experiments = get_experiments(project_id=project_id)
-        
-        # Use ThreadPoolExecutor for experiments within this model
-        with ThreadPoolExecutor(max_workers=10) as thread_executor:
-            # Submit all experiment processing tasks
-            future_to_exp = {
-                thread_executor.submit(process_experiment, exp, original_model): exp 
-                for exp in experiments
-            }
-            
-            # Collect results as they complete
-            for future in as_completed(future_to_exp):
-                result = future.result()
-                if result is not None:
-                    model_data.append(result)
-                    
-    except Exception as e:
-        print(f"Error processing model {model}: {str(e)}")
-    
+        for exp in experiments:
+            cache_file = cache_dir / f"{exp.name}.json"
+            if cache_file.exists():
+                try:
+                    with cache_file.open("r") as fh:
+                        cached_result = json.load(fh)
+                    # Only append valid cached results (dict with expected keys)
+                    if isinstance(cached_result, dict) and 'experiment_name' in cached_result:
+                        model_data.append(cached_result)
+                    else:
+                        print(f"Cache file malformed for {exp.name}, reprocessing...")
+                        future_to_exp[thread_executor.submit(process_experiment, exp, original_model)] = exp
+                except Exception as read_err:
+                    print(f"Failed to read cache for {exp.name}: {str(read_err)}. Reprocessing...")
+                    future_to_exp[thread_executor.submit(process_experiment, exp, original_model)] = exp
+            else:
+                future_to_exp[thread_executor.submit(process_experiment, exp, original_model)] = exp
+
+        # Collect results as they complete
+        for future in as_completed(future_to_exp):
+            result = future.result()
+            if result is not None:
+                model_data.append(result)
+
     print(f"Completed processing for model: {model}, found {len(model_data)} valid experiments")
     return model_data
 
