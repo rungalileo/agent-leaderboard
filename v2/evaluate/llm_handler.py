@@ -49,6 +49,7 @@ class LLMHandler:
                 "gemini-2.5-flash",
                 "gemini-2.5-pro",
                 "gemini-2.5-flash-lite",
+                "gemini-3-pro-preview",
             ],
             "together": [
                 "meta-llama/Llama-3.3-70B-Instruct-Turbo",
