@@ -31,13 +31,17 @@ class LLMHandler:
                 "claude-sonnet-4-20250514",
                 "claude-opus-4-20250514",
                 "claude-opus-4-1-20250805",
+                "claude-haiku-4-5-20251001",
+                "claude-sonnet-4-5-20250929",
+                "claude-opus-4-5-20251101"
             ],
             "mistral": [
                 "mistral-small-2506",
                 "mistral-medium-2505",
                 "magistral-small-2506",
                 "magistral-medium-2506",
-                "mistral-medium-2508"
+                "mistral-medium-2508",
+                "mistral-large-2512"
             ],
             "google": [
                 "gemini-2.0-flash-exp",
@@ -83,7 +87,8 @@ class LLMHandler:
                 "o4-mini-2025-04-16",
                 "gpt-5-2025-08-07",
                 "gpt-5-mini-2025-08-07",
-                "gpt-5-nano-2025-08-07"
+                "gpt-5-nano-2025-08-07",
+                "gpt-5.2-2025-12-11"
 
             ],
             "fireworks": [
@@ -121,6 +126,8 @@ class LLMHandler:
                 "grok-3",
                 "grok-3-mini",
                 "grok-4-0709",
+                "grok-4-1-fast-reasoning",
+                "grok-4-1-fast-non-reasoning"
             ],
             "baseten": [
                 "moonshotai/Kimi-K2-Thinking",
