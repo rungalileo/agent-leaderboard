@@ -1,6 +1,7 @@
 import argparse
 from typing import List
 from simulation import run_simulation_experiments
+import config
 from dotenv import load_dotenv
 
 load_dotenv("../.env")
@@ -56,7 +57,7 @@ def main():
     parser.add_argument(
         "--metrics",
         type=str,
-        default="tool_selection_quality,agentic_session_success",
+        default=",".join(config.METRICS),
         help="Comma-separated list of metrics to evaluate",
     )
 

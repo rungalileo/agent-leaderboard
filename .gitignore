@@ -173,3 +173,4 @@ cython_debug/
 */data/*
 .DS_Store
 v2/evaluate/results
+data_v2

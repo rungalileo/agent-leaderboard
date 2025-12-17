@@ -8,6 +8,8 @@ from simulation import run_simulation_experiments
 from dotenv import load_dotenv
 import time
 
+import config
+
 load_dotenv("../.env")
 
 
@@ -108,7 +110,7 @@ def main():
     parser.add_argument(
         "--metrics",
         type=str,
-        default="tool_selection_quality,agentic_session_success",
+        default=",".join(config.METRICS),
         help="Comma-separated list of metrics to evaluate",
     )
 
