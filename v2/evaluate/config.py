@@ -14,7 +14,7 @@ AGENT_MAX_TOKENS = 4000
 
 METRICS = [
     "tool_selection_quality",
-    "agentic_session_success",
+    "Action Completion - Agent Leaderboard",
 ]
 
 FILE_PATHS = {

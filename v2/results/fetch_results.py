@@ -214,10 +214,24 @@ def process_experiment(exp, model):
                     else:
                         print(f"average_tool_selection_quality not found in experiment {exp.name}, proceeding without it")
                     
+                    # Look up the action completion metric by key.
+                    # The key changed from 'average_agentic_session_success' to a
+                    # custom metric name after a Galileo platform update (see #12).
+                    action_completion = None
+                    props = exp.aggregate_metrics.additional_properties
+                    for key in ("average_action_completion___agent_leaderboard",
+                                "average_Action Completion - Agent Leaderboard",
+                                "average_agentic_session_success"):
+                        if key in props:
+                            action_completion = round(props[key], 2)
+                            break
+                    if action_completion is None:
+                        print(f"Action completion metric not found in experiment {exp.name}, proceeding without it")
+
                     result = {
                         'experiment_name': exp.name, 
                         'total_responses': exp.aggregate_metrics.additional_properties['total_responses'],
-                        'average_action_completion': round(exp.aggregate_metrics.additional_properties['average_agentic_session_success'], 2),
+                        'average_action_completion': action_completion,
                         'average_tool_selection_quality': tool_selection_quality, 
                         'model': final_model_name, 
                         'category': category
