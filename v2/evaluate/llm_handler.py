@@ -190,10 +190,10 @@ class LLMHandler:
             model_params["temperature"] = 0.0
 
         # best parameters for qwen3 
-        if "qwen3" in model_name:
+        if "qwen3" in model_name.lower():
             #thinking model - Temperature=0.6, TopP=0.95, TopK=20, and MinP=0.
             # https://huggingface.co/Qwen/Qwen3-235B-A22B-Thinking-2507#best-practices
-            if "thinking" in model_name:
+            if "thinking" in model_name.lower():
                 model_params["temperature"] = 0.6
                 model_params["top_p"] = 0.95
                 model_params["top_k"] = 20
