@@ -5,6 +5,7 @@ import random
 import itertools
 from typing import List, Tuple
 from simulation import run_simulation_experiments
+from config import METRICS
 from dotenv import load_dotenv
 import time
 
@@ -108,7 +109,7 @@ def main():
     parser.add_argument(
         "--metrics",
         type=str,
-        default="tool_selection_quality,agentic_session_success",
+        default=",".join(METRICS),
         help="Comma-separated list of metrics to evaluate",
     )
 

@@ -321,7 +321,7 @@ if __name__ == "__main__":
     experiment_name = f"weather-conversation-experiment-{int(time.time() * 1000000)}"
     METRICS = [
         "tool_selection_quality",
-        "agentic_session_success",
+        "Action Completion - Agent Leaderboard",
     ]
 
     # No galileo_context here - we're creating new loggers for each turn
