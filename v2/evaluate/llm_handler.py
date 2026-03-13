@@ -199,13 +199,14 @@ class LLMHandler:
                 model_params["top_k"] = 20
                 model_params["min_p"] = 0.0
                 model_params["repetition_penalty"] = 1.05
-            #instruct model - Temperature=0.7, TopP=0.8, TopK=20, and MinP=0.
-            #https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507#best-practices
-            model_params["temperature"] = 0.7
-            model_params["top_p"] = 0.8
-            model_params["top_k"] = 20
-            model_params["min_p"] = 0.0
-            model_params["repetition_penalty"] = 1.05
+            else:
+                #instruct model - Temperature=0.7, TopP=0.8, TopK=20, and MinP=0.
+                #https://huggingface.co/Qwen/Qwen3-235B-A22B-Instruct-2507#best-practices
+                model_params["temperature"] = 0.7
+                model_params["top_p"] = 0.8
+                model_params["top_k"] = 20
+                model_params["min_p"] = 0.0
+                model_params["repetition_penalty"] = 1.05
 
         if "kimi-k2-thinking" in model_name.lower():
             # https://platform.moonshot.ai/docs/guide/use-kimi-k2-thinking-model#usage-notes
