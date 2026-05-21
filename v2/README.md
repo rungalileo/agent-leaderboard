@@ -192,6 +192,39 @@ METRICS = [
 ]
 ```
 
+### Galileo Metric Setup
+
+Before running the evaluation against Galileo, create the custom Action Completion metric and apply the Tool Selection Quality filter in your Galileo project.
+
+1. In Galileo, go to **Metrics** -> **Action Completion**, click the three-dot menu at the end of the row, and select **Duplicate**.
+
+   <p align="center">
+     <img alt="Duplicate Action Completion metric" src="https://github.com/user-attachments/assets/d886fcc2-8b3f-4d60-937a-d9fc4bcb55d6" />
+   </p>
+
+2. Keep the prompt unchanged. Set **Apply to** to **Trace** and keep the rest of the configuration as shown below. This creates the custom Action Completion metric used by this repo.
+
+   <p align="center">
+     <img alt="Configure duplicated Action Completion metric" src="https://github.com/user-attachments/assets/a4efc5cf-4946-4b9d-85df-131294ad3daa" />
+   </p>
+
+3. Open your experiment project, then go to **Experiments** -> **Metrics**. For **Tool Selection Quality**, click the three-dot menu, select **Apply filter**, and set the filter to `span_name` **not equal to** `agent_final_response`. This avoids calculating TSQ on the final response generation span after tool calls are complete.
+
+   <p align="center">
+     <img alt="Apply Tool Selection Quality filter" src="https://github.com/user-attachments/assets/e0e8489e-dadf-4f0e-a0e6-870035eb4a7c" />
+   </p>
+
+4. Reference the metrics in `evaluate/config.py`:
+
+   ```python
+   METRICS = [
+       "tool_selection_quality",
+       "Action Completion - Agent Leaderboard",
+   ]
+   ```
+
+Metric creation is global in Galileo, but metric filters are project-level. Apply the TSQ filter in each project where you run these experiments.
+
 ## Results Analysis
 
 Results are saved in `results/` directory with experiment metadata and can be analyzed using:
