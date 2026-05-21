@@ -6,6 +6,8 @@ from typing import Dict, List, Any
 from colorama import Fore, Style
 from tqdm import tqdm
 import pandas as pd
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 import config
 from llm_handler import LLMHandler
@@ -31,6 +33,51 @@ load_dotenv("../.env")
 
 # Initialize logger without verbose flag by default
 logger = setup_logger(verbose=False)
+
+# Retry decorator for Galileo API calls
+galileo_retry = retry(
+    retry=retry_if_exception_type((httpx.ConnectTimeout, httpx.TimeoutException, ConnectionError)),
+    wait=wait_exponential(multiplier=1, min=2, max=60),
+    stop=stop_after_attempt(7),
+    reraise=True
+)
+
+
+@galileo_retry
+def get_project_with_retry(name):
+    """Get a Galileo project with retry logic."""
+    return get_project(name=name)
+
+
+@galileo_retry
+def create_project_with_retry(name):
+    """Create a Galileo project with retry logic."""
+    return create_project(name)
+
+
+@galileo_retry
+def get_experiments_with_retry(project_id):
+    """Get all experiments for a project with retry logic."""
+    return get_experiments(project_id=project_id)
+
+
+@galileo_retry
+def get_experiment_with_retry(project_id, experiment_name):
+    """Get a specific experiment with retry logic."""
+    return get_experiment(project_id=project_id, experiment_name=experiment_name)
+
+
+@galileo_retry
+def run_experiment_with_retry(**kwargs):
+    """Run an experiment with retry logic."""
+    return run_experiment(**kwargs)
+
+
+@galileo_retry
+def get_dataset_with_retry(name):
+    """Get a dataset with retry logic."""
+    return get_dataset(name=name)
+
 
 class AgentSimulation:
 
@@ -453,7 +500,7 @@ class AgentSimulation:
                 )
 
             # Check if conversation should end
-            if "CONVERSATION_COMPLETE" in user_response:
+            if "CONVERSATION_COMPLETE" in final_response:
                 logger.info(
                     log_section(
                         "COMPLETION",
@@ -654,16 +701,14 @@ def run_simulation_experiments(
             current_project_name = model.replace("/", "-")
 
         # Check if project exists and create it if it doesn't
-        time.sleep(random.randint(0, 20))
-        time.sleep(random.randint(0, 20))
-        if not bool(get_project(name=current_project_name)):
+        if not bool(get_project_with_retry(name=current_project_name)):
             logger.info(f"Creating project: {current_project_name}")
-            create_project(current_project_name)
+            create_project_with_retry(current_project_name)
 
         # ensure only 1 experiment is running for each domain and category
-        project_id = get_project(name=current_project_name).id
+        project_id = get_project_with_retry(name=current_project_name).id
         experiment_already_exists = False
-        for exp in get_experiments(project_id=project_id):
+        for exp in get_experiments_with_retry(project_id=project_id):
             if domain in exp.name and category in exp.name:
                 if "total_responses" in exp.aggregate_metrics.additional_properties:
                     if exp.aggregate_metrics.additional_properties["total_responses"] >= config.MIN_SAMPLES_PER_DATASET:   
@@ -684,9 +729,9 @@ def run_simulation_experiments(
             experiment_name = f"{domain}-{category}"
 
         # Check if experiment already exists
-        project_id = get_project(name=current_project_name).id
+        project_id = get_project_with_retry(name=current_project_name).id
         experiment_exists = bool(
-            get_experiment(project_id=project_id, experiment_name=experiment_name)
+            get_experiment_with_retry(project_id=project_id, experiment_name=experiment_name)
         )
 
         if experiment_exists:
@@ -729,7 +774,7 @@ def run_simulation_experiments(
 
         # Get or create dataset
         if dataset_name:
-            dataset = get_dataset(name=dataset_name)
+            dataset = get_dataset_with_retry(name=dataset_name)
         else:
             # Create custom dataset from scenarios
             simulation = AgentSimulation(
@@ -772,7 +817,7 @@ def run_simulation_experiments(
                 style=Fore.CYAN,
             )
         )
-        result = run_experiment(
+        result = run_experiment_with_retry(
             experiment_name=experiment_name,
             project=current_project_name,
             dataset=dataset,

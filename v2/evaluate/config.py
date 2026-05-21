@@ -13,8 +13,13 @@ AGENT_TEMPERATURE = 0.0 # keeping it low to avoid hallucinations
 AGENT_MAX_TOKENS = 4000
 
 METRICS = [
-    "tool_selection_quality",
-    "agentic_session_success",
+    # default metric
+    # "tool_selection_quality",
+    # "agentic_session_success",
+    # duplicate metric with claude 3.7
+    "Tool Selection Quality - Agent Leaderboard",
+    # Tool selection quality needs to be applied with filter span_name not equal to agent_final_response since it is response generation step after calling tools and there is no need for TSQ to be calculated unnecessarily.
+    "Action Completion - Agent Leaderboard"
 ]
 
 FILE_PATHS = {
@@ -24,7 +29,7 @@ FILE_PATHS = {
 }
 
 # Simulation Configuration
-MAX_TURNS = 10  # Maximum number of turns in a conversation so that agent does not get stuck in a loop
+MAX_TURNS = 5  # Maximum number of turns in a conversation so that agent does not get stuck in a loop
 
 # Samples per dataset
 MIN_SAMPLES_PER_DATASET = 80    # Minimum number of samples per dataset to be considered for evaluation (if less than this, the experiment is not considered complete)
@@ -96,14 +101,12 @@ Respond as this user based on their persona and scenario goals.
 BEHAVIOR GUIDELINES:
 1. Respond appropriately to the questions asked by the assistant.
 2. Check if the assistant has completed all the tasks in the user_goals. If not then ask the assistant to complete the remaining tasks.
-3. If assistant indicates a request is unsupported: don't repeat it, move to another goal. 
-4. If assistant says it has completed all the tasks and there are no more goals to complete then end with "CONVERSATION_COMPLETE". 
-5. Keep responses natural and realistic for your persona.
-6. If you are not sure about the answer, say you do not know.
-7. Respond in a concise manner. No need to thank the assistant for the help.
-8. Do not discuss anything beyond what is needed to complete the goals.
-9. If the assistant is not able to complete the goals, skip and move to remaining goals. Do not ask the assistant to repeat the same goal again.
-10. Once we have iterated through all the goals and assistant has succeeded or failed, end with 'CONVERSATION_COMPLETE'."""
+3. If assistant indicates a request is unsupported: don't repeat it, move to another goal.
+4. Keep responses natural and realistic for your persona.
+5. If you are not sure about the answer, say you do not know.
+6. Respond in a concise manner. No need to thank the assistant for the help.
+7. Do not discuss anything beyond what is needed to complete the goals.
+8. If the assistant is not able to complete the goals, skip and move to remaining goals. Do not ask the assistant to repeat the same goal again."""
 
 AGENT_SYSTEM_PROMPT = """{domain_instructions}
 
@@ -115,6 +118,7 @@ Important:
 - Do not assume or make up things you don't know explicitly.
 - Do not give any generic advice or do things you are not asked to do.
 - If you do not know the answer, say you do not know.
+- When you have completed all the user's requests and there is nothing more to do, end your response with 'CONVERSATION_COMPLETE'.
 """
 
 FINAL_RESPONSE_PROMPT = """Based on the conversation history and the results of the tools, please provide a helpful response to the user's request.
